@@ -1,0 +1,14 @@
+## Interface: 120007
+## Title: LootLevel
+## Notes: Season item level reference table.
+## Author: Yvairel
+## Version: 12.0.7-1
+## SavedVariables: LootLevelDB
+
+Libs\LibStub\LibStub.lua
+Libs\LibPopupSlider-1.0\LibPopupSlider-1.0.xml
+
+Core.lua
+Data.lua
+UI.lua
+Commands.lua
