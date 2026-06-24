@@ -22,11 +22,6 @@ local PADDING = 14
 local TITLE_HEIGHT = 28
 local HEADER_HEIGHT = 26
 local ROW_HEIGHT = 20
-local LEFT_WIDTH = 334
-local GAP = 20
-local MAIN_WIDTH = 790
-local RAID_SUB_WIDTH = 40
-local CRAFT_SUB_WIDTH = 43
 local SCALE_MIN_PERCENT = 50
 local SCALE_MAX_PERCENT = 200
 local SCALE_STEP_PERCENT = 5
@@ -1322,163 +1317,190 @@ local function DrawMergedCells(parent)
     end
 end
 
-local LEFT_TABLE_COLUMNS = {
-    { columnIndex = 1, width = 62, title = "Level", defaultColor = "light", bold = true },
-    { columnIndex = 2, width = 46, title = "Loot", defaultColor = "blank" },
-    { columnIndex = 3, width = 46, title = "Loot upgrade", defaultColor = "blank" },
-    { columnIndex = 4, width = 46, title = "Great Vault", defaultColor = "blank" },
-    { columnIndex = 5, width = 46, title = "Great Vault upgrade", defaultColor = "blank" },
-    { columnIndex = 6, width = 62, title = "Crest", defaultColor = "blank" },
-    { columnIndex = 7, width = 26, title = "Section", defaultColor = "blank" },
-}
+local function ColumnKey(columnDefinition, fallbackIndex)
+    return columnDefinition.columnKey or ColumnName(columnDefinition.columnIndex or fallbackIndex)
+end
 
-local function CreateLeftGridRow(parent, x, y, gridRow)
+local function ColumnCoord(columnDefinition, fallbackIndex, rowIndex)
+    local columnKey = ColumnKey(columnDefinition, fallbackIndex)
+    if not columnKey or not rowIndex then
+        return nil
+    end
+
+    return ("%s%d"):format(columnKey, rowIndex)
+end
+
+local function TableColumnIndex(tableDefinition, columnKey)
+    local requestedIndex = ColumnIndex(columnKey)
+    for index, columnDefinition in ipairs(tableDefinition.columns or {}) do
+        if ColumnIndex(ColumnKey(columnDefinition, index)) == requestedIndex then
+            return index
+        end
+    end
+
+    return nil
+end
+
+local function TableColumnX(tableDefinition, tableX, columnIndex)
+    local x = tableX
+    for index = 1, columnIndex - 1 do
+        local columnDefinition = tableDefinition.columns[index]
+        x = x + (columnDefinition and columnDefinition.width or 0)
+    end
+
+    return x
+end
+
+local function TableColumnWidth(tableDefinition, fromColumnIndex, toColumnIndex)
+    local width = 0
+    for index = fromColumnIndex, toColumnIndex do
+        local columnDefinition = tableDefinition.columns[index]
+        width = width + (columnDefinition and columnDefinition.width or 0)
+    end
+
+    return width
+end
+
+local function FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition)
+    local columnTitle = columnDefinition.columnTitle or columnDefinition.title or ColumnKey(columnDefinition)
+    if columnDefinition.defaultTooltipTitleTemplate then
+        return columnDefinition.defaultTooltipTitleTemplate:format(rowDefinition.itemLevel or rowDefinition.rowIndex)
+    end
+    if tableDefinition.defaultCellTooltipTitleTemplate then
+        return tableDefinition.defaultCellTooltipTitleTemplate:format(rowDefinition.rowIndex, columnTitle)
+    end
+    if rowDefinition.itemLevel then
+        return ("%s at item level %s"):format(columnTitle, rowDefinition.itemLevel)
+    end
+
+    return ("%s row %d - %s"):format(tableDefinition.displayName or tableDefinition.tableKey, rowDefinition.rowIndex, columnTitle)
+end
+
+local function DefaultCellText(columnDefinition, rowDefinition)
+    if columnDefinition.defaultTextValueKey == "itemLevel" and rowDefinition.itemLevel then
+        return tostring(rowDefinition.itemLevel)
+    end
+    if columnDefinition.defaultTextValueKey == "rowIndex" and rowDefinition.rowIndex then
+        return tostring(rowDefinition.rowIndex)
+    end
+
+    return ""
+end
+
+local function BuildDataTableHeader(parent, tableDefinition, x, y)
+    local tableKey = tableDefinition.tableKey
+    for _, headerDefinition in ipairs(tableDefinition.headers or {}) do
+        local fromColumnIndex = TableColumnIndex(tableDefinition, headerDefinition.startColumnKey or headerDefinition.columnKey)
+        local toColumnIndex = TableColumnIndex(tableDefinition, headerDefinition.endColumnKey or headerDefinition.startColumnKey or headerDefinition.columnKey)
+        if fromColumnIndex and toColumnIndex then
+            if fromColumnIndex > toColumnIndex then
+                fromColumnIndex, toColumnIndex = toColumnIndex, fromColumnIndex
+            end
+
+            local headerX = TableColumnX(tableDefinition, x, fromColumnIndex)
+            local width = TableColumnWidth(tableDefinition, fromColumnIndex, toColumnIndex)
+            local coord = headerDefinition.cellCoordinate or ColumnCoord(tableDefinition.columns[fromColumnIndex], fromColumnIndex, 1)
+            CreateHeader(parent, headerX, y, width, HEADER_HEIGHT, headerDefinition.displayText or "", {
+                tableKey = tableKey,
+                coord = coord,
+                title = headerDefinition.tooltipTitle or headerDefinition.displayText or tableDefinition.displayName,
+                columnTitle = headerDefinition.columnTitle or headerDefinition.displayText or tableDefinition.displayName,
+            })
+        end
+    end
+end
+
+local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y)
+    local tableKey = tableDefinition.tableKey
     local colX = x
-    for _, column in ipairs(LEFT_TABLE_COLUMNS) do
-        local coord = CoordFromIndex(column.columnIndex, gridRow)
-        local data = GetConfiguredCellData("left", coord) or {}
-        CreateCell(parent, colX, y, column.width, ROW_HEIGHT, MergeCellData({
-            tableKey = "left",
+    for columnIndex, columnDefinition in ipairs(tableDefinition.columns or {}) do
+        local coord = ColumnCoord(columnDefinition, columnIndex, rowDefinition.rowIndex)
+        local data = GetConfiguredCellData(tableKey, coord) or {}
+        local columnTitle = columnDefinition.columnTitle or columnDefinition.title or ColumnKey(columnDefinition, columnIndex)
+
+        CreateCell(parent, colX, y, columnDefinition.width, ROW_HEIGHT, MergeCellData({
+            tableKey = tableKey,
             coord = coord,
-            text = data.text or "",
-            color = data.color or column.defaultColor,
-            bold = column.bold,
-            title = data.title or ("Left table row %d - %s"):format(gridRow, column.title),
-            columnTitle = column.title,
+            text = data.text or DefaultCellText(columnDefinition, rowDefinition),
+            color = data.color or columnDefinition.defaultColorKey or "blank",
+            bold = columnDefinition.isBold,
+            level = rowDefinition.itemLevel,
+            title = data.title or FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition),
+            columnTitle = columnTitle,
+            lines = data.lines,
         }, data))
-        colX = colX + column.width
+        colX = colX + columnDefinition.width
     end
 end
 
-local function BuildLeftTable(parent, x, y)
-    local worldBodyY = y + HEADER_HEIGHT
-    local leftLayout = NS.Data.leftLayout or {}
-    local worldRows = leftLayout.worldRowCount or 19
-    local worldHeight = worldRows * ROW_HEIGHT
-    local delveBodyY = worldBodyY + worldHeight + (ROW_HEIGHT * 2)
-    local delveRows = leftLayout.delveRowCount or 11
-    local delveStartRow = leftLayout.delveStartRow or (worldRows + 5)
+local function BuildExplicitRangeRows(tableDefinition, addRow)
+    local bodyRows = tableDefinition.bodyRows or {}
+    local firstRowIndex = bodyRows.firstRowIndex or 2
+    local lastRowIndex = bodyRows.lastRowIndex or firstRowIndex
 
-    CreateHeader(parent, x, y, 62, HEADER_HEIGHT, "Level", { tableKey = "left", coord = "a1" })
-    CreateHeader(parent, x + 62, y, 92, HEADER_HEIGHT, "Loot", { tableKey = "left", coord = "b1" })
-    CreateHeader(parent, x + 154, y, 92, HEADER_HEIGHT, "GV", { tableKey = "left", coord = "d1" })
-    CreateHeader(parent, x + 246, y, 62, HEADER_HEIGHT, "Crest", { tableKey = "left", coord = "f1" })
-    CreateHeader(parent, x + 308, y, 26, HEADER_HEIGHT, "", { tableKey = "left", coord = "g1" })
-
-    local rowY = worldBodyY
-    for index = 1, worldRows do
-        CreateLeftGridRow(parent, x, rowY + ((index - 1) * ROW_HEIGHT), index + 1)
-    end
-
-    rowY = delveBodyY
-    for index = 1, delveRows do
-        CreateLeftGridRow(parent, x, rowY + ((index - 1) * ROW_HEIGHT), delveStartRow + index - 1)
+    for rowIndex = firstRowIndex, lastRowIndex do
+        addRow({ rowIndex = rowIndex })
     end
 end
 
-local function BuildMainTable(parent, x, y)
-    local bodyY = y + HEADER_HEIGHT
-
-    local headerX = x
-    CreateHeader(parent, headerX, y, 46, HEADER_HEIGHT, "ilvl", { coord = "a1" })
-    headerX = headerX + 46
-    CreateHeader(parent, headerX, y, RAID_SUB_WIDTH * 6, HEADER_HEIGHT, "Raid Difficulty / Track", { coord = "b1" })
-    headerX = headerX + (RAID_SUB_WIDTH * 6)
-    CreateHeader(parent, headerX, y, CRAFT_SUB_WIDTH * 2, HEADER_HEIGHT, "Craft", { coord = "h1" })
-    headerX = headerX + (CRAFT_SUB_WIDTH * 2)
-    CreateHeader(parent, headerX, y, 62, HEADER_HEIGHT, "Prey", { coord = "j1" })
-    headerX = headerX + 62
-    CreateHeader(parent, headerX, y, 62, HEADER_HEIGHT, "Delve", { coord = "k1" })
-    headerX = headerX + 62
-    CreateHeader(parent, headerX, y, 62, HEADER_HEIGHT, "Map", { coord = "l1" })
-    headerX = headerX + 62
-    CreateHeader(parent, headerX, y, 62, HEADER_HEIGHT, "GV", { coord = "m1" })
-    headerX = headerX + 62
-    CreateHeader(parent, headerX, y, 62, HEADER_HEIGHT, "Dung.", { coord = "n1" })
-    headerX = headerX + 62
-    CreateHeader(parent, headerX, y, 62, HEADER_HEIGHT, "GV", { coord = "o1" })
-    headerX = headerX + 62
-    CreateHeader(parent, headerX, y, 46, HEADER_HEIGHT, "ilvl", { coord = "p1" })
-
-    for rowIndex, level in ipairs(NS.Data.levels) do
-        local rowY = bodyY + ((rowIndex - 1) * ROW_HEIGHT)
-        local gridRow = rowIndex + 1
-        local colX = x
-
-        CreateCell(parent, colX, rowY, 46, ROW_HEIGHT, {
-            coord = CoordFromIndex(1, gridRow),
-            text = tostring(level),
-            color = "light",
-            bold = true,
-            level = level,
-            title = ("Item level %s"):format(level),
-            columnTitle = "Item level",
-        })
-        colX = colX + 46
-
-        for column = 1, 6 do
-            local coord = CoordFromIndex(column + 1, gridRow)
-            local data = GetConfiguredCellData("main", coord) or {}
-            CreateCell(parent, colX, rowY, RAID_SUB_WIDTH, ROW_HEIGHT, MergeCellData({
-                coord = coord,
-                text = data.text or "",
-                color = data.color or "blank",
-                level = level,
-                title = data.title or ("Raid / track at item level %s"):format(level),
-                columnTitle = "Raid Difficulty / Track",
-                lines = data.lines,
-            }, data))
-            colX = colX + RAID_SUB_WIDTH
+local function BuildTableBodyRows(tableDefinition, addRow)
+    local bodyRows = tableDefinition.bodyRows or {}
+    if bodyRows.rowSource == "itemLevels" then
+        local firstRowIndex = bodyRows.firstRowIndex or 2
+        for index, itemLevel in ipairs(NS.Data.levels or {}) do
+            addRow({
+                rowIndex = firstRowIndex + index - 1,
+                itemLevel = itemLevel,
+            })
         end
-
-        for column = 1, 2 do
-            local coord = CoordFromIndex(column + 7, gridRow)
-            local data = GetConfiguredCellData("main", coord) or {}
-            CreateCell(parent, colX, rowY, CRAFT_SUB_WIDTH, ROW_HEIGHT, MergeCellData({
-                coord = coord,
-                text = data.text or "",
-                color = data.color or "blank",
-                level = level,
-                title = data.title or ("Crafting at item level %s"):format(level),
-                columnTitle = "Craft",
-            }, data))
-            colX = colX + CRAFT_SUB_WIDTH
+    elseif bodyRows.rowSource == "explicitRange" then
+        BuildExplicitRangeRows(tableDefinition, addRow)
+    elseif bodyRows.rows then
+        for _, rowDefinition in ipairs(bodyRows.rows) do
+            if type(rowDefinition) == "table" then
+                addRow(rowDefinition)
+            else
+                addRow({ rowIndex = rowDefinition })
+            end
         end
-
-        local activityOrder = {
-            { key = "prey", title = "Prey" },
-            { key = "delve", title = "Delve" },
-            { key = "map", title = "Map" },
-            { key = "outdoorVault", title = "Great Vault" },
-            { key = "dungeon", title = "Dungeon" },
-            { key = "dungeonVault", title = "Dungeon Great Vault" },
-        }
-
-        for activityIndex, column in ipairs(activityOrder) do
-            local coord = CoordFromIndex(activityIndex + 9, gridRow)
-            local data = GetConfiguredCellData("main", coord) or {}
-            CreateCell(parent, colX, rowY, 62, ROW_HEIGHT, MergeCellData({
-                coord = coord,
-                text = data.text or "",
-                color = data.color or "blank",
-                level = level,
-                title = data.title or ("%s at item level %s"):format(column.title, level),
-                columnTitle = column.title,
-            }, data))
-            colX = colX + 62
+    elseif bodyRows.groups then
+        for groupIndex, groupDefinition in ipairs(bodyRows.groups) do
+            if groupIndex > 1 then
+                addRow({ marginRows = groupDefinition.marginTopRows or 0 })
+            end
+            for rowIndex = groupDefinition.firstRowIndex, groupDefinition.lastRowIndex do
+                addRow({ rowIndex = rowIndex })
+            end
         end
+    end
+end
 
-        CreateCell(parent, colX, rowY, 46, ROW_HEIGHT, {
-            coord = CoordFromIndex(16, gridRow),
-            text = tostring(level),
-            color = "light",
-            bold = true,
-            level = level,
-            title = ("Item level %s"):format(level),
-            columnTitle = "Item level",
-        })
+local function BuildDataTable(parent, tableDefinition)
+    if not tableDefinition or not tableDefinition.tableKey then
+        return
     end
 
+    local x = tableDefinition.positionX or 0
+    local y = tableDefinition.positionY or 0
+    local visualRowIndex = 0
+
+    BuildDataTableHeader(parent, tableDefinition, x, y)
+
+    BuildTableBodyRows(tableDefinition, function(rowDefinition)
+        if rowDefinition.marginRows then
+            visualRowIndex = visualRowIndex + rowDefinition.marginRows
+            return
+        end
+
+        BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + HEADER_HEIGHT + (visualRowIndex * ROW_HEIGHT))
+        visualRowIndex = visualRowIndex + 1
+    end)
+end
+
+local function BuildRegisteredTables(parent)
+    for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
+        BuildDataTable(parent, tableDefinition)
+    end
 end
 
 local function BuildFooter(parent)
@@ -1659,8 +1681,7 @@ function NS:CreateMainFrame()
     SetLayoutBox(content, "TOPLEFT", frame, "TOPLEFT", PADDING, -(TITLE_HEIGHT + 8), FRAME_WIDTH - (PADDING * 2), FRAME_HEIGHT - TITLE_HEIGHT - 42)
     content.cells = frame.cells
 
-    BuildLeftTable(content, 0, 0)
-    BuildMainTable(content, LEFT_WIDTH + GAP, 0)
+    BuildRegisteredTables(content)
     DrawMergedCells(content)
     DrawGridLines(content)
     BuildFooter(frame)
