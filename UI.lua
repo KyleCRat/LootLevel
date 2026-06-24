@@ -27,6 +27,11 @@ local SCALE_MAX_PERCENT = 200
 local SCALE_STEP_PERCENT = 5
 local SCALE_DEFAULT_PERCENT = 100
 
+local MERGED_VERTICAL_LABEL_NUDGE_X = -6
+local MERGED_VERTICAL_LABEL_NUDGE_Y = 7
+local MERGED_VERTICAL_LABEL_WIDTH_PADDING = 12
+local MERGED_VERTICAL_LABEL_HEIGHT_PADDING = 2
+
 local Color
 local TextColorFor
 
@@ -707,7 +712,7 @@ local function AssignCellToBlock(parent, cell, block)
     parent.blockByCoord[cell.coordKey] = block
     cell.cellData.blockId = block.id
 
-    if block.color and cell.cellData.usesBlockBackgroundColor ~= false then
+    if block.color and not cell.cellData.hasBackgroundColorOverride then
         cell.bg:SetColorTexture(Color(block.color))
         if cell.text then
             cell.text:SetTextColor(TextColorFor(block.color))
@@ -1192,13 +1197,48 @@ local function CreateHeader(parent, x, y, width, height, text, cellData)
     }, cellData))
 end
 
+local function GetUnscaledFontMeasurement(fontString, methodName)
+    local method = fontString and fontString[methodName]
+    if not method then
+        return nil
+    end
+
+    local value = method(fontString)
+    if value and value > 0 then
+        return value / GetLayoutScale()
+    end
+
+    return nil
+end
+
 local function CreateOverlayLabel(parent, x, y, width, height, text, fontSize)
-    local fs = CreateText(parent, text, fontSize or 13, "black", "CENTER", "MIDDLE", false)
-    SetLayoutBounds(fs, parent, x, y, width, height)
+    fontSize = fontSize or 13
+    local fs = CreateText(parent, text, fontSize, "black", "CENTER", "MIDDLE", false)
 
     if fs.SetRotation then
+        local maxTextWidth = math.max(1, height)
+        local maxTextHeight = math.max(1, width - 4)
+        local stringWidth = GetUnscaledFontMeasurement(fs, "GetStringWidth")
+        local stringHeight = GetUnscaledFontMeasurement(fs, "GetStringHeight")
+            or GetUnscaledFontMeasurement(fs, "GetLineHeight")
+        local labelWidth = math.min(maxTextWidth, math.max(1, (stringWidth or maxTextWidth) + MERGED_VERTICAL_LABEL_WIDTH_PADDING))
+        local labelHeight = math.min(maxTextHeight, math.max(1, (stringHeight or fontSize) + MERGED_VERTICAL_LABEL_HEIGHT_PADDING))
+        local centerX = x + (width / 2) + MERGED_VERTICAL_LABEL_NUDGE_X
+        local centerY = y + (height / 2) + MERGED_VERTICAL_LABEL_NUDGE_Y
+
+        SetLayoutBox(
+            fs,
+            "CENTER",
+            parent,
+            "TOPLEFT",
+            centerX,
+            -centerY,
+            labelWidth,
+            labelHeight
+        )
         fs:SetRotation(math.pi / 2)
     else
+        SetLayoutBounds(fs, parent, x, y, width, height)
         fs:SetText((text or ""):gsub("(.)", "%1\n"))
     end
 

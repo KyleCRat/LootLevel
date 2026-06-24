@@ -101,7 +101,7 @@ Block({
     innerBorderStyleKey = "dashed",
     metadata = { contentType = "raid", difficulty = "lfr" },
     cells = {
-        Cell({ columnKey = "b", itemLevel = 272, displayText = "GV", tooltipTitle = "Champion Great Vault Reward", metadata = { valueType = "dropItemLevel" } }),
+        Cell({ columnKey = "b", itemLevel = 272, displayText = "GV", tooltipTitle = "Champion Great Vault Reward", backgroundColorKey = "yellow", metadata = { valueType = "dropItemLevel" } }),
         MergedCell({ columnKey = "b", fromItemLevel = 276, toItemLevel = 282, displayText = "LFR", isTextVertical = true }),
         Cell({ columnKey = "b", itemLevel = 276, tooltipTitle = "LFR raid drops", metadata = { valueType = "dropItemLevel" } }),
         Cell({ columnKey = "b", itemLevel = 279, tooltipTitle = "LFR raid drops", metadata = { valueType = "dropItemLevel" } }),
