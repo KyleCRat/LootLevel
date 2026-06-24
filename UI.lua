@@ -482,7 +482,7 @@ local function RegisterCellCoordinate(parent, cell, cellData, x, y, width, heigh
         return
     end
 
-    local tableKey = cellData.tableKey or cellData.gridTable or cellData.table or "main"
+    local tableKey = cellData.table or "main"
     local column, row = ParseCoord(coord)
     if not column or not row then
         return
@@ -651,15 +651,15 @@ end
 local function EnsureColorBlock(parent, blockData, order)
     parent.colorBlocksById = parent.colorBlocksById or {}
 
-    local id = blockData.id or blockData.block or blockData[1]
+    local id = blockData.id
     if not id then
         return nil
     end
 
     local existing = parent.colorBlocksById[id]
     if existing then
-        if blockData.color ~= nil then
-            existing.color = blockData.color
+        if blockData.bg ~= nil then
+            existing.bg = blockData.bg
         end
         if blockData.border ~= nil then
             existing.border = blockData.border
@@ -682,7 +682,7 @@ local function EnsureColorBlock(parent, blockData, order)
     local block = {
         id = id,
         parentBlockId = blockData.parentBlockId,
-        color = blockData.color,
+        bg = blockData.bg,
         border = blockData.border or "solid1",
         innerBorder = blockData.innerBorder,
         parentInnerBorder = blockData.parentInnerBorder,
@@ -731,7 +731,7 @@ local function ResolveCellStyleValue(cellData, valueKey)
 end
 
 local function ResolveCellBackgroundColor(cellData)
-    return ResolveCellStyleValue(cellData, "backgroundColorKey") or "blank"
+    return ResolveCellStyleValue(cellData, "bg") or "blank"
 end
 
 local function ApplyCellResolvedStyle(cell)
@@ -740,14 +740,14 @@ local function ApplyCellResolvedStyle(cell)
         return
     end
 
-    local backgroundColorKey = ResolveCellBackgroundColor(cellData)
-    cellData.resolvedBackgroundColorKey = backgroundColorKey
+    local bg = ResolveCellBackgroundColor(cellData)
+    cellData.resolvedBg = bg
 
     if cell.bg then
-        cell.bg:SetColorTexture(Color(backgroundColorKey))
+        cell.bg:SetColorTexture(Color(bg))
     end
     if cell.text then
-        cell.text:SetTextColor(TextColorFor(backgroundColorKey))
+        cell.text:SetTextColor(TextColorFor(bg))
     end
 end
 
@@ -769,11 +769,11 @@ local function AssignCellToBlock(parent, cell, block)
     end
 
     parent.blockByCoord[cell.coordKey] = block
-    cell.cellData.blockId = block.id
+    cell.cellData.block = block.id
 
-    if block.color then
+    if block.bg then
         SetCellStyleLayer(cell.cellData, "block", STYLE_LAYER_BLOCK, {
-            backgroundColorKey = block.color,
+            bg = block.bg,
         })
         ApplyCellResolvedStyle(cell)
     end
@@ -797,7 +797,7 @@ local function ApplyColorBlocks(parent)
         order = order + 1
         local block = EnsureColorBlock(parent, blockData, order)
         if block and type(blockData.cells) == "table" then
-            local tableKey = blockData.tableKey or blockData.gridTable or blockData.table or "main"
+            local tableKey = blockData.table or "main"
             for _, coord in ipairs(blockData.cells) do
                 AssignCellToBlock(parent, GetCellByCoord(parent, tableKey, coord), block)
             end
@@ -833,12 +833,12 @@ local function DrawColorBlockBorders(parent)
 end
 
 local function StoreExplicitEdge(parent, cell, edge, rule, order)
-    local style = CopyBorderStyle(rule.style or rule.border or rule[3], rule.priority or EXPLICIT_BORDER_PRIORITY, order)
+    local style = CopyBorderStyle(rule.style, rule.priority or EXPLICIT_BORDER_PRIORITY, order)
     StoreGridLine(parent, GetCellEdgeLine(cell, edge), style)
 end
 
 local function ShouldApplyRuleToTable(rule, tableKey)
-    local requested = rule.tables or rule.tableKey or rule.gridTable or rule.table
+    local requested = rule.tables or rule.table
     if type(requested) == "table" then
         for _, requestedTable in ipairs(requested) do
             if requestedTable == "all" or requestedTable == tableKey then
@@ -853,7 +853,7 @@ local function ShouldApplyRuleToTable(rule, tableKey)
 end
 
 local function ApplyEveryBorderRule(parent, rule, order)
-    local axis = rule.axis or (rule.horizontal and "h") or (rule.vertical and "v")
+    local axis = rule.axis
     if axis ~= "h" and axis ~= "v" then
         return
     end
@@ -862,8 +862,8 @@ local function ApplyEveryBorderRule(parent, rule, order)
         if ShouldApplyRuleToTable(rule, tableKey) then
             for row, columns in pairs(grid.rows or {}) do
                 if axis == "h" then
-                    local fromRow = tonumber(rule.from or rule.rowStart or rule.start)
-                    local toRow = tonumber(rule.to or rule.rowEnd or rule.stop or fromRow)
+                    local fromRow = tonumber(rule.from)
+                    local toRow = tonumber(rule.to or fromRow)
                     if not fromRow or (row >= fromRow and row <= toRow) then
                         for column, cell in pairs(columns) do
                             local nextRow = grid.rows[row + 1]
@@ -886,8 +886,8 @@ local function ApplyEveryBorderRule(parent, rule, order)
 end
 
 local function ApplyBetweenBorderRule(parent, rule, order)
-    local tableKey = rule.tableKey or rule.gridTable or rule.table or "main"
-    local pair = rule.between or rule.cells or rule
+    local tableKey = rule.table or "main"
+    local pair = rule.between
     if type(pair) ~= "table" then
         return
     end
@@ -912,17 +912,14 @@ local function ApplyBetweenBorderRule(parent, rule, order)
 end
 
 local function ApplyVerticalBorderRule(parent, rule, order)
-    local tableKey = rule.tableKey or rule.gridTable or rule.table or "main"
-    local column = ColumnIndex(rule.after or rule.column or rule.col)
-    if rule.before then
-        column = (ColumnIndex(rule.before) or 1) - 1
-    end
+    local tableKey = rule.table or "main"
+    local column = ColumnIndex(rule.after)
     if not column or column < 1 then
         return
     end
 
-    local fromRow = tonumber(rule.from or rule.rowStart or rule.start)
-    local toRow = tonumber(rule.to or rule.rowEnd or rule.stop or fromRow)
+    local fromRow = tonumber(rule.from)
+    local toRow = tonumber(rule.to or fromRow)
     if not fromRow or not toRow then
         return
     end
@@ -939,19 +936,18 @@ local function ApplyVerticalBorderRule(parent, rule, order)
 end
 
 local function ApplyHorizontalBorderRule(parent, rule, order)
-    local tableKey = rule.tableKey or rule.gridTable or rule.table or "main"
-    local row = tonumber(rule.below or rule.row)
+    local tableKey = rule.table or "main"
+    local row = tonumber(rule.row)
     local edge = "bottom"
-    if rule.above then
-        row = tonumber(rule.above)
+    if rule.edge == "top" then
         edge = "top"
     end
     if not row then
         return
     end
 
-    local fromColumn = ColumnIndex(rule.from or rule.columnStart or rule.start)
-    local toColumn = ColumnIndex(rule.to or rule.columnEnd or rule.stop or fromColumn)
+    local fromColumn = ColumnIndex(rule.fromCol)
+    local toColumn = ColumnIndex(rule.toCol or rule.fromCol)
     if not fromColumn or not toColumn then
         return
     end
@@ -969,13 +965,13 @@ end
 
 local function DrawExplicitBorderRules(parent)
     for index, rule in ipairs(NS.Data.borderRules or {}) do
-        if rule.each or rule.all then
+        if rule.each then
             ApplyEveryBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
-        elseif rule.between or rule.cells or (type(rule[1]) == "string" and type(rule[2]) == "string") then
+        elseif rule.between then
             ApplyBetweenBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
-        elseif rule.axis == "v" or rule.vertical then
+        elseif rule.axis == "v" then
             ApplyVerticalBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
-        elseif rule.axis == "h" or rule.horizontal then
+        elseif rule.axis == "h" then
             ApplyHorizontalBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
         end
     end
@@ -1121,17 +1117,26 @@ local function CreateText(parent, text, size, colorName, justifyH, justifyV, bol
 end
 
 local function BuildTooltipLines(cellData, fallbackLabel)
-    local lines = cellData.lines
-    if lines then
-        return lines
+    local tooltip = cellData.tooltip
+    local lines = {}
+
+    if type(tooltip) == "table" then
+        for _, key in ipairs({ "a", "b", "c", "d", "e" }) do
+            if tooltip[key] then
+                lines[#lines + 1] = tooltip[key]
+            end
+        end
+
+        if #lines > 0 then
+            return lines
+        end
     end
 
-    lines = {}
     if cellData.level then
         lines[#lines + 1] = ("Item level: %s"):format(cellData.level)
     end
-    if cellData.columnTitle then
-        lines[#lines + 1] = ("Column: %s"):format(cellData.columnTitle)
+    if cellData.colTitle then
+        lines[#lines + 1] = ("Column: %s"):format(cellData.colTitle)
     end
     if cellData.text and cellData.text ~= "" then
         lines[#lines + 1] = ("Value: %s"):format(cellData.text)
@@ -1171,6 +1176,15 @@ local function MergeCellData(defaults, source)
     return cellData
 end
 
+local function TooltipTitle(cellData)
+    local tooltip = cellData and cellData.tooltip
+    if type(tooltip) == "table" then
+        return tooltip.title
+    end
+
+    return nil
+end
+
 local function GetConfiguredCellData(tableKey, coord)
     local tableCells = NS.Data.cells and NS.Data.cells[tableKey or "main"]
     return tableCells and tableCells[coord] or nil
@@ -1179,7 +1193,7 @@ end
 local function ShowCellTooltip(cell)
     local data = cell.cellData or {}
     GameTooltip:SetOwner(cell, "ANCHOR_RIGHT")
-    GameTooltip:SetText(data.title or data.columnTitle or "LootLevel cell", 1, 1, 1)
+    GameTooltip:SetText(TooltipTitle(data) or data.colTitle or "LootLevel cell", 1, 1, 1)
 
     local gridLine = FormatGridTooltipLine(cell)
     if gridLine then
@@ -1198,10 +1212,10 @@ end
 local function CreateCell(parent, x, y, width, height, cellData)
     cellData = cellData or {}
     SetCellStyleLayer(cellData, "default", STYLE_LAYER_DEFAULT, {
-        backgroundColorKey = cellData.defaultBackgroundColorKey or "blank",
+        bg = cellData.defaultBg or "blank",
     })
     SetCellStyleLayer(cellData, "cell", STYLE_LAYER_CELL, {
-        backgroundColorKey = cellData.backgroundColorKey,
+        bg = cellData.bg,
     })
 
     local cell = CreateFrame("Button", nil, parent)
@@ -1219,7 +1233,7 @@ local function CreateCell(parent, x, y, width, height, cellData)
     highlight:SetAllPoints()
     highlight:SetColorTexture(1, 1, 1, 0.22)
 
-    local text = CreateText(cell, cellData.text or "", cellData.fontSize or 12, "black", "CENTER", "MIDDLE", cellData.bold)
+    local text = CreateText(cell, cellData.text or "", cellData.font or 12, "black", "CENTER", "MIDDLE", cellData.bold)
     text:SetPoint("CENTER", cell, "CENTER", 0, 0)
     SetLayoutSize(text, math.max(1, width - 4), math.max(1, height - 4))
     cell.text = text
@@ -1253,11 +1267,11 @@ end
 local function CreateHeader(parent, x, y, width, height, text, cellData)
     return CreateCell(parent, x, y, width, height, MergeCellData({
         text = text,
-        backgroundColorKey = "header",
+        bg = "header",
         bold = true,
-        fontSize = 13,
-        title = text,
-        columnTitle = text,
+        font = 13,
+        tooltip = { title = text },
+        colTitle = text,
     }, cellData))
 end
 
@@ -1310,8 +1324,8 @@ local function CreateOverlayLabel(parent, x, y, width, height, text, fontSize)
 end
 
 local function FormatMergedCellRange(mergedCell)
-    local startCoord = mergedCell.startCellCoordinate and string.upper(mergedCell.startCellCoordinate)
-    local endCoord = mergedCell.endCellCoordinate and string.upper(mergedCell.endCellCoordinate)
+    local startCoord = mergedCell.startCoord and string.upper(mergedCell.startCoord)
+    local endCoord = mergedCell.endCoord and string.upper(mergedCell.endCoord)
     if not startCoord then
         return nil
     end
@@ -1344,12 +1358,10 @@ local function CreateMergedCellHitTarget(parent, overlay, x, y, width, height, m
     hitTarget:SetFrameLevel(overlay:GetFrameLevel() + 10)
 
     hitTarget.cellData = {
-        text = mergedCell.displayText or "",
-        color = mergedCell.backgroundColorKey,
-        title = mergedCell.tooltipTitle or mergedCell.displayText or "Merged cell",
-        columnTitle = mergedCell.columnTitle or "Merged cell",
-        lines = mergedCell.tooltipLines,
-        metadata = mergedCell.metadata,
+        text = mergedCell.text or "",
+        bg = mergedCell.bg,
+        tooltip = mergedCell.tooltip or { title = mergedCell.text or "Merged cell" },
+        colTitle = mergedCell.colTitle or "Merged cell",
         onClick = mergedCell.onClick,
     }
     hitTarget.gridLabel = FormatMergedCellRange(mergedCell)
@@ -1383,9 +1395,9 @@ local function CreateMergedCellHitTarget(parent, overlay, x, y, width, height, m
 end
 
 local function CreateMergedCellLabel(parent, mergedCell)
-    local tableKey = mergedCell.tableKey or "main"
-    local startCell = GetCellByCoord(parent, tableKey, mergedCell.startCellCoordinate)
-    local endCell = GetCellByCoord(parent, tableKey, mergedCell.endCellCoordinate or mergedCell.startCellCoordinate)
+    local tableKey = mergedCell.table or "main"
+    local startCell = GetCellByCoord(parent, tableKey, mergedCell.startCoord)
+    local endCell = GetCellByCoord(parent, tableKey, mergedCell.endCoord or mergedCell.startCoord)
     if not startCell or not endCell or not startCell.gridBounds or not endCell.gridBounds then
         return
     end
@@ -1398,17 +1410,17 @@ local function CreateMergedCellLabel(parent, mergedCell)
     local y2 = math.max(startBounds.y + startBounds.height, endBounds.y + endBounds.height)
     local overlay = GetMergedCellOverlay(parent)
 
-    if mergedCell.backgroundColorKey then
+    if mergedCell.bg then
         local background = overlay:CreateTexture(nil, "BACKGROUND")
         ApplyTexturePixelSnapping(background)
-        background:SetColorTexture(Color(mergedCell.backgroundColorKey))
+        background:SetColorTexture(Color(mergedCell.bg))
         SetLayoutBounds(background, overlay, x1, y1, x2 - x1, y2 - y1)
     end
 
-    if mergedCell.isTextVertical ~= false then
-        CreateOverlayLabel(overlay, x1, y1, x2 - x1, y2 - y1, mergedCell.displayText, mergedCell.fontSize or 13)
+    if mergedCell.vertical ~= false then
+        CreateOverlayLabel(overlay, x1, y1, x2 - x1, y2 - y1, mergedCell.text, mergedCell.font or 13)
     else
-        local fs = CreateText(overlay, mergedCell.displayText, mergedCell.fontSize or 13, "black", "CENTER", "MIDDLE", false)
+        local fs = CreateText(overlay, mergedCell.text, mergedCell.font or 13, "black", "CENTER", "MIDDLE", false)
         SetLayoutBounds(fs, overlay, x1, y1, x2 - x1, y2 - y1)
     end
 
@@ -1422,7 +1434,7 @@ local function DrawMergedCells(parent)
 end
 
 local function ColumnKey(columnDefinition, fallbackIndex)
-    return columnDefinition.columnKey or ColumnName(columnDefinition.columnIndex or fallbackIndex)
+    return columnDefinition.col or ColumnName(columnDefinition.index or fallbackIndex)
 end
 
 local function ColumnCoord(columnDefinition, fallbackIndex, rowIndex)
@@ -1466,36 +1478,36 @@ local function TableColumnWidth(tableDefinition, fromColumnIndex, toColumnIndex)
 end
 
 local function FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition)
-    local columnTitle = columnDefinition.columnTitle or columnDefinition.title or ColumnKey(columnDefinition)
-    if columnDefinition.defaultTooltipTitleTemplate then
-        return columnDefinition.defaultTooltipTitleTemplate:format(rowDefinition.itemLevel or rowDefinition.rowIndex)
+    local columnTitle = columnDefinition.title or ColumnKey(columnDefinition)
+    if columnDefinition.tooltip and columnDefinition.tooltip.title then
+        return columnDefinition.tooltip.title:format(rowDefinition.itemLevel or rowDefinition.row)
     end
-    if tableDefinition.defaultCellTooltipTitleTemplate then
-        return tableDefinition.defaultCellTooltipTitleTemplate:format(rowDefinition.rowIndex, columnTitle)
+    if tableDefinition.tooltip and tableDefinition.tooltip.title then
+        return tableDefinition.tooltip.title:format(rowDefinition.row, columnTitle)
     end
     if rowDefinition.itemLevel then
         return ("%s at item level %s"):format(columnTitle, rowDefinition.itemLevel)
     end
 
-    return ("%s row %d - %s"):format(tableDefinition.displayName or tableDefinition.tableKey, rowDefinition.rowIndex, columnTitle)
+    return ("%s row %d - %s"):format(tableDefinition.name or tableDefinition.key, rowDefinition.row, columnTitle)
 end
 
 local function DefaultCellText(columnDefinition, rowDefinition)
-    if columnDefinition.defaultTextValueKey == "itemLevel" and rowDefinition.itemLevel then
+    if columnDefinition.value == "itemLevel" and rowDefinition.itemLevel then
         return tostring(rowDefinition.itemLevel)
     end
-    if columnDefinition.defaultTextValueKey == "rowIndex" and rowDefinition.rowIndex then
-        return tostring(rowDefinition.rowIndex)
+    if columnDefinition.value == "row" and rowDefinition.row then
+        return tostring(rowDefinition.row)
     end
 
     return ""
 end
 
 local function BuildDataTableHeader(parent, tableDefinition, x, y)
-    local tableKey = tableDefinition.tableKey
+    local tableKey = tableDefinition.key
     for _, headerDefinition in ipairs(tableDefinition.headers or {}) do
-        local fromColumnIndex = TableColumnIndex(tableDefinition, headerDefinition.startColumnKey or headerDefinition.columnKey)
-        local toColumnIndex = TableColumnIndex(tableDefinition, headerDefinition.endColumnKey or headerDefinition.startColumnKey or headerDefinition.columnKey)
+        local fromColumnIndex = TableColumnIndex(tableDefinition, headerDefinition.fromCol or headerDefinition.col)
+        local toColumnIndex = TableColumnIndex(tableDefinition, headerDefinition.toCol or headerDefinition.fromCol or headerDefinition.col)
         if fromColumnIndex and toColumnIndex then
             if fromColumnIndex > toColumnIndex then
                 fromColumnIndex, toColumnIndex = toColumnIndex, fromColumnIndex
@@ -1503,35 +1515,34 @@ local function BuildDataTableHeader(parent, tableDefinition, x, y)
 
             local headerX = TableColumnX(tableDefinition, x, fromColumnIndex)
             local width = TableColumnWidth(tableDefinition, fromColumnIndex, toColumnIndex)
-            local coord = headerDefinition.cellCoordinate or ColumnCoord(tableDefinition.columns[fromColumnIndex], fromColumnIndex, 1)
-            CreateHeader(parent, headerX, y, width, HEADER_HEIGHT, headerDefinition.displayText or "", {
-                tableKey = tableKey,
+            local coord = headerDefinition.coord or ColumnCoord(tableDefinition.columns[fromColumnIndex], fromColumnIndex, 1)
+            CreateHeader(parent, headerX, y, width, HEADER_HEIGHT, headerDefinition.text or "", {
+                table = tableKey,
                 coord = coord,
-                title = headerDefinition.tooltipTitle or headerDefinition.displayText or tableDefinition.displayName,
-                columnTitle = headerDefinition.columnTitle or headerDefinition.displayText or tableDefinition.displayName,
+                tooltip = headerDefinition.tooltip or { title = headerDefinition.text or tableDefinition.name },
+                colTitle = headerDefinition.title or headerDefinition.text or tableDefinition.name,
             })
         end
     end
 end
 
 local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y)
-    local tableKey = tableDefinition.tableKey
+    local tableKey = tableDefinition.key
     local colX = x
     for columnIndex, columnDefinition in ipairs(tableDefinition.columns or {}) do
-        local coord = ColumnCoord(columnDefinition, columnIndex, rowDefinition.rowIndex)
+        local coord = ColumnCoord(columnDefinition, columnIndex, rowDefinition.row)
         local data = GetConfiguredCellData(tableKey, coord) or {}
-        local columnTitle = columnDefinition.columnTitle or columnDefinition.title or ColumnKey(columnDefinition, columnIndex)
+        local columnTitle = columnDefinition.title or ColumnKey(columnDefinition, columnIndex)
 
         CreateCell(parent, colX, y, columnDefinition.width, ROW_HEIGHT, MergeCellData({
-            tableKey = tableKey,
+            table = tableKey,
             coord = coord,
             text = data.text or DefaultCellText(columnDefinition, rowDefinition),
-            defaultBackgroundColorKey = columnDefinition.defaultColorKey or "blank",
-            bold = columnDefinition.isBold,
+            defaultBg = columnDefinition.bg or "blank",
+            bold = columnDefinition.bold,
             level = rowDefinition.itemLevel,
-            title = data.title or FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition),
-            columnTitle = columnTitle,
-            lines = data.lines,
+            tooltip = data.tooltip or { title = FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition) },
+            colTitle = columnTitle,
         }, data))
         colX = colX + columnDefinition.width
     end
@@ -1539,53 +1550,53 @@ end
 
 local function BuildExplicitRangeRows(tableDefinition, addRow)
     local bodyRows = tableDefinition.bodyRows or {}
-    local firstRowIndex = bodyRows.firstRowIndex or 2
-    local lastRowIndex = bodyRows.lastRowIndex or firstRowIndex
+    local firstRow = bodyRows.firstRow or 2
+    local lastRow = bodyRows.lastRow or firstRow
 
-    for rowIndex = firstRowIndex, lastRowIndex do
-        addRow({ rowIndex = rowIndex })
+    for row = firstRow, lastRow do
+        addRow({ row = row })
     end
 end
 
 local function BuildTableBodyRows(tableDefinition, addRow)
     local bodyRows = tableDefinition.bodyRows or {}
-    if bodyRows.rowSource == "itemLevels" then
-        local firstRowIndex = bodyRows.firstRowIndex or 2
+    if bodyRows.source == "itemLevels" then
+        local firstRow = bodyRows.firstRow or 2
         for index, itemLevel in ipairs(NS.Data.levels or {}) do
             addRow({
-                rowIndex = firstRowIndex + index - 1,
+                row = firstRow + index - 1,
                 itemLevel = itemLevel,
             })
         end
-    elseif bodyRows.rowSource == "explicitRange" then
+    elseif bodyRows.source == "explicitRange" then
         BuildExplicitRangeRows(tableDefinition, addRow)
     elseif bodyRows.rows then
         for _, rowDefinition in ipairs(bodyRows.rows) do
             if type(rowDefinition) == "table" then
                 addRow(rowDefinition)
             else
-                addRow({ rowIndex = rowDefinition })
+                addRow({ row = rowDefinition })
             end
         end
     elseif bodyRows.groups then
         for groupIndex, groupDefinition in ipairs(bodyRows.groups) do
             if groupIndex > 1 then
-                addRow({ marginRows = groupDefinition.marginTopRows or 0 })
+                addRow({ marginRows = groupDefinition.marginTop or 0 })
             end
-            for rowIndex = groupDefinition.firstRowIndex, groupDefinition.lastRowIndex do
-                addRow({ rowIndex = rowIndex })
+            for row = groupDefinition.firstRow, groupDefinition.lastRow do
+                addRow({ row = row })
             end
         end
     end
 end
 
 local function BuildDataTable(parent, tableDefinition)
-    if not tableDefinition or not tableDefinition.tableKey then
+    if not tableDefinition or not tableDefinition.key then
         return
     end
 
-    local x = tableDefinition.positionX or 0
-    local y = tableDefinition.positionY or 0
+    local x = tableDefinition.x or 0
+    local y = tableDefinition.y or 0
     local visualRowIndex = 0
 
     BuildDataTableHeader(parent, tableDefinition, x, y)
@@ -1684,7 +1695,7 @@ local function CreateScaleButton(parent)
 end
 
 function NS:HandleCellClick(cellData, button)
-    local label = cellData.title or cellData.columnTitle or "cell"
+    local label = TooltipTitle(cellData) or cellData.colTitle or "cell"
     if button == "RightButton" then
         self:Print(("Right-clicked %s."):format(label))
     else

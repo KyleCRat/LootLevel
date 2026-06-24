@@ -10,56 +10,56 @@ local RawBorderRule = Data.BorderRule
 local TABLE_KEY = "dungeon"
 
 local function Block(definition)
-    definition.tableKey = definition.tableKey or TABLE_KEY
+    definition.table = definition.table or TABLE_KEY
     return RawBlock(definition)
 end
 
 local function BorderRule(definition)
-    definition.tableKey = definition.tableKey or TABLE_KEY
+    definition.table = definition.table or TABLE_KEY
     return RawBorderRule(definition)
 end
 
 Table({
-    tableKey = TABLE_KEY,
-    displayName = "Dungeon table",
-    positionX = 0,
-    positionY = 0,
+    key = TABLE_KEY,
+    name = "Dungeon table",
+    x = 0,
+    y = 0,
     columns = {
-        { columnKey = "a", width = 62, columnTitle = "Level", defaultColorKey = "light", isBold = true },
-        { columnKey = "b", width = 46, columnTitle = "Loot", defaultColorKey = "blank" },
-        { columnKey = "c", width = 46, columnTitle = "Loot upgrade", defaultColorKey = "blank" },
-        { columnKey = "d", width = 46, columnTitle = "Great Vault", defaultColorKey = "blank" },
-        { columnKey = "e", width = 46, columnTitle = "Great Vault upgrade", defaultColorKey = "blank" },
-        { columnKey = "f", width = 62, columnTitle = "Crest", defaultColorKey = "blank" },
-        { columnKey = "g", width = 26, columnTitle = "Section", defaultColorKey = "blank" },
+        { col = "a", width = 62, title = "Level", bg = "light", bold = true },
+        { col = "b", width = 46, title = "Loot", bg = "blank" },
+        { col = "c", width = 46, title = "Loot upgrade", bg = "blank" },
+        { col = "d", width = 46, title = "Great Vault", bg = "blank" },
+        { col = "e", width = 46, title = "Great Vault upgrade", bg = "blank" },
+        { col = "f", width = 62, title = "Crest", bg = "blank" },
+        { col = "g", width = 26, title = "Section", bg = "blank" },
     },
     headers = {
-        { startColumnKey = "a", endColumnKey = "a", displayText = "Level", cellCoordinate = "a1" },
-        { startColumnKey = "b", endColumnKey = "c", displayText = "Loot", cellCoordinate = "b1" },
-        { startColumnKey = "d", endColumnKey = "e", displayText = "GV", cellCoordinate = "d1" },
-        { startColumnKey = "f", endColumnKey = "f", displayText = "Crest", cellCoordinate = "f1" },
-        { startColumnKey = "g", endColumnKey = "g", displayText = "", cellCoordinate = "g1" },
+        { fromCol = "a", toCol = "a", text = "Level", coord = "a1" },
+        { fromCol = "b", toCol = "c", text = "Loot", coord = "b1" },
+        { fromCol = "d", toCol = "e", text = "GV", coord = "d1" },
+        { fromCol = "f", toCol = "f", text = "Crest", coord = "f1" },
+        { fromCol = "g", toCol = "g", text = "", coord = "g1" },
     },
     bodyRows = {
-        rowSource = "explicitRange",
-        firstRowIndex = 2,
-        lastRowIndex = 20,
+        source = "explicitRange",
+        firstRow = 2,
+        lastRow = 20,
     },
 })
 
 BorderRule({
-    borderAxis = "horizontal",
+    axis = "horizontal",
     fromRow = 1,
     toRow = 1,
-    appliesToEachCell = true,
-    borderStyleKey = "solid3",
+    each = true,
+    style = "solid3",
     priority = 100,
 })
 
 BorderRule({
-    borderAxis = "horizontal",
-    appliesToEachCell = true,
-    borderStyleKey = "dashed",
+    axis = "horizontal",
+    each = true,
+    style = "dashed",
     priority = 1,
 })
 

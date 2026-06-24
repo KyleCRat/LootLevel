@@ -31,32 +31,6 @@ local colorBlocks = {}
 local mergedCells = {}
 local borderRules = {}
 
-local function CopyTable(source)
-    local copy = {}
-    for key, value in pairs(source or {}) do
-        copy[key] = value
-    end
-    return copy
-end
-
-local function MergeTables(base, override)
-    local merged = CopyTable(base)
-    for key, value in pairs(override or {}) do
-        merged[key] = value
-    end
-    return merged
-end
-
-local function RowForItemLevel(itemLevel)
-    for index, candidate in ipairs(levels) do
-        if candidate == itemLevel then
-            return index + 1
-        end
-    end
-
-    return nil
-end
-
 local function ColumnIndex(columnKey)
     columnKey = tostring(columnKey or ""):lower()
     local index = 0
@@ -87,45 +61,36 @@ local function ColumnKeyFromIndex(index)
     return columnKey
 end
 
-local function MainCellCoordinate(definition)
-    local row = RowForItemLevel(definition.itemLevel)
-    if not row then
+local function DefaultTooltip(title)
+    if title then
+        return { title = title }
+    end
+
+    return nil
+end
+
+local function CellCoordinate(definition)
+    if definition.coord then
+        return definition.coord
+    end
+
+    if not definition.col or not definition.row then
         return nil
     end
 
-    return ("%s%d"):format(definition.columnKey, row)
-end
-
-local function ExplicitRowCellCoordinate(definition)
-    if not definition.columnKey or not definition.rowIndex then
-        return nil
-    end
-
-    return ("%s%d"):format(definition.columnKey, definition.rowIndex)
-end
-
-local function CellCoordinate(definition, tableKey)
-    if definition.cellCoordinate then
-        return definition.cellCoordinate
-    end
-
-    if definition.itemLevel then
-        return MainCellCoordinate(definition)
-    end
-
-    return ExplicitRowCellCoordinate(definition)
+    return ("%s%d"):format(definition.col, definition.row)
 end
 
 local function Table(definition)
-    if not definition or not definition.tableKey then
+    if not definition or not definition.key then
         return nil
     end
 
-    if not tablesByKey[definition.tableKey] then
+    if not tablesByKey[definition.key] then
         tableOrder[#tableOrder + 1] = definition
     end
 
-    tablesByKey[definition.tableKey] = definition
+    tablesByKey[definition.key] = definition
     return definition
 end
 
@@ -140,45 +105,41 @@ local function MergedCell(definition)
 end
 
 local function RegisterBlockCell(blockDefinition, cellDefinition)
-    local tableKey = cellDefinition.tableKey or blockDefinition.tableKey or "main"
-    local cellCoordinate = CellCoordinate(cellDefinition, tableKey)
+    local tableKey = cellDefinition.table or blockDefinition.table or "main"
+    local cellCoordinate = CellCoordinate(cellDefinition)
     if not cellCoordinate then
         return nil
     end
 
     cellsByTable[tableKey] = cellsByTable[tableKey] or {}
     cellsByTable[tableKey][cellCoordinate] = {
-        text = cellDefinition.displayText or "",
-        backgroundColorKey = cellDefinition.backgroundColorKey,
-        title = cellDefinition.tooltipTitle or blockDefinition.tooltipTitle,
-        lines = cellDefinition.tooltipLines,
-        level = cellDefinition.itemLevel,
-        columnTitle = cellDefinition.columnTitle,
-        metadata = MergeTables(blockDefinition.metadata, cellDefinition.metadata),
+        text = cellDefinition.text or "",
+        bg = cellDefinition.bg,
+        tooltip = cellDefinition.tooltip or blockDefinition.tooltip,
+        colTitle = cellDefinition.title,
         onClick = cellDefinition.onClick,
     }
 
     return cellCoordinate
 end
 
-local function MergedCellCoordinate(definition, tableKey, isEndCoordinate)
-    local itemLevel = isEndCoordinate and (definition.toItemLevel or definition.fromItemLevel) or definition.fromItemLevel
-    local rowIndex = isEndCoordinate and (definition.toRowIndex or definition.fromRowIndex) or definition.fromRowIndex
-    local columnKey = isEndCoordinate
-        and (definition.toColumnKey or definition.columnKey or definition.fromColumnKey)
-        or (definition.fromColumnKey or definition.columnKey)
+local function MergedCellCoordinate(definition, isEndCoordinate)
+    local coord = isEndCoordinate and definition.toCoord or definition.fromCoord
+    local row = isEndCoordinate and (definition.toRow or definition.row) or (definition.fromRow or definition.row)
+    local col = isEndCoordinate
+        and (definition.toCol or definition.col or definition.fromCol)
+        or (definition.fromCol or definition.col)
 
     return CellCoordinate({
-        cellCoordinate = isEndCoordinate and definition.endCellCoordinate or definition.startCellCoordinate,
-        columnKey = columnKey,
-        itemLevel = itemLevel,
-        rowIndex = rowIndex,
-    }, tableKey)
+        coord = coord,
+        col = col,
+        row = row,
+    })
 end
 
-local function MergedCellCoordinates(definition, tableKey)
-    local startCellCoordinate = MergedCellCoordinate(definition, tableKey, false)
-    local endCellCoordinate = MergedCellCoordinate(definition, tableKey, true)
+local function MergedCellCoordinates(definition)
+    local startCellCoordinate = MergedCellCoordinate(definition, false)
+    local endCellCoordinate = MergedCellCoordinate(definition, true)
     if not startCellCoordinate or not endCellCoordinate then
         return nil, nil, nil
     end
@@ -211,24 +172,22 @@ local function MergedCellCoordinates(definition, tableKey)
 end
 
 local function RegisterMergedCell(blockDefinition, cellDefinition)
-    local tableKey = cellDefinition.tableKey or blockDefinition.tableKey or "main"
-    local coordinates, startCellCoordinate, endCellCoordinate = MergedCellCoordinates(cellDefinition, tableKey)
+    local tableKey = cellDefinition.table or blockDefinition.table or "main"
+    local coordinates, startCellCoordinate, endCellCoordinate = MergedCellCoordinates(cellDefinition)
     if not coordinates then
         return nil
     end
 
     mergedCells[#mergedCells + 1] = {
-        tableKey = tableKey,
-        startCellCoordinate = startCellCoordinate,
-        endCellCoordinate = endCellCoordinate,
-        displayText = cellDefinition.displayText,
-        backgroundColorKey = cellDefinition.backgroundColorKey or blockDefinition.backgroundColorKey,
-        tooltipTitle = cellDefinition.tooltipTitle or blockDefinition.tooltipTitle or cellDefinition.displayText,
-        tooltipLines = cellDefinition.tooltipLines,
-        columnTitle = cellDefinition.columnTitle,
-        isTextVertical = cellDefinition.isTextVertical ~= false,
-        fontSize = cellDefinition.fontSize,
-        metadata = MergeTables(blockDefinition.metadata, cellDefinition.metadata),
+        table = tableKey,
+        startCoord = startCellCoordinate,
+        endCoord = endCellCoordinate,
+        text = cellDefinition.text,
+        bg = cellDefinition.bg or blockDefinition.bg,
+        tooltip = cellDefinition.tooltip or blockDefinition.tooltip or DefaultTooltip(cellDefinition.text),
+        colTitle = cellDefinition.title,
+        vertical = cellDefinition.vertical ~= false,
+        font = cellDefinition.font,
         onClick = cellDefinition.onClick,
     }
 
@@ -245,14 +204,14 @@ local function Block(definition)
             local mergedCellCoordinates = RegisterMergedCell(definition, cellDefinition)
             if mergedCellCoordinates and #mergedCellCoordinates > 0 then
                 mergedCellColorBlocks[#mergedCellColorBlocks + 1] = {
-                    id = ("%s.merged.%d"):format(definition.blockId, #mergedCellColorBlocks + 1),
-                    parentBlockId = definition.blockId,
-                    color = cellDefinition.backgroundColorKey or definition.backgroundColorKey,
-                    border = cellDefinition.outerBorderStyleKey or definition.outerBorderStyleKey or "solid1",
-                    innerBorder = cellDefinition.innerBorderStyleKey,
-                    parentInnerBorder = cellDefinition.parentInnerBorderStyleKey or definition.innerBorderStyleKey,
+                    id = ("%s.merged.%d"):format(definition.id, #mergedCellColorBlocks + 1),
+                    parentBlockId = definition.id,
+                    bg = cellDefinition.bg or definition.bg,
+                    border = cellDefinition.border or definition.border or "solid1",
+                    innerBorder = cellDefinition.innerBorder,
+                    parentInnerBorder = cellDefinition.parentInnerBorder or definition.innerBorder,
                     cells = mergedCellCoordinates,
-                    tableKey = cellDefinition.tableKey or definition.tableKey or "main",
+                    table = cellDefinition.table or definition.table or "main",
                     priority = (definition.priority or 0) + 1,
                 }
             end
@@ -266,12 +225,12 @@ local function Block(definition)
 
     if #blockCellCoordinates > 0 then
         colorBlocks[#colorBlocks + 1] = {
-            id = definition.blockId,
-            color = definition.backgroundColorKey,
-            border = definition.outerBorderStyleKey or "solid1",
-            innerBorder = definition.innerBorderStyleKey,
+            id = definition.id,
+            bg = definition.bg,
+            border = definition.border or "solid1",
+            innerBorder = definition.innerBorder,
             cells = blockCellCoordinates,
-            tableKey = definition.tableKey or "main",
+            table = definition.table or "main",
             priority = definition.priority or 0,
         }
     end
@@ -294,16 +253,20 @@ end
 
 local function BorderRule(definition)
     borderRules[#borderRules + 1] = {
-        axis = NormalizeBorderAxis(definition.borderAxis),
-        table = definition.tableKey,
-        tables = definition.tableKeys,
+        axis = NormalizeBorderAxis(definition.axis),
+        table = definition.table,
+        tables = definition.tables,
         from = definition.fromRow,
         to = definition.toRow,
-        after = definition.afterColumnKey,
-        style = definition.borderStyleKey,
+        after = definition.afterCol,
+        row = definition.row,
+        fromCol = definition.fromCol,
+        toCol = definition.toCol,
+        edge = definition.edge,
+        style = definition.style,
         priority = definition.priority,
-        each = definition.appliesToEachCell,
-        between = definition.betweenCellCoordinates,
+        each = definition.each,
+        between = definition.between,
     }
 end
 

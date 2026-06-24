@@ -10,110 +10,109 @@ local RawBorderRule = Data.BorderRule
 local TABLE_KEY = "primary"
 
 local function Block(definition)
-    definition.tableKey = definition.tableKey or TABLE_KEY
+    definition.table = definition.table or TABLE_KEY
     return RawBlock(definition)
 end
 
 local function BorderRule(definition)
-    definition.tableKey = definition.tableKey or TABLE_KEY
+    definition.table = definition.table or TABLE_KEY
     return RawBorderRule(definition)
 end
 
 Table({
-    tableKey = TABLE_KEY,
-    displayName = "Primary item level table",
-    positionX = 354,
-    positionY = 0,
+    key = TABLE_KEY,
+    name = "Primary item level table",
+    x = 354,
+    y = 0,
     columns = {
-        { columnKey = "a", width = 46, columnTitle = "Item level", defaultColorKey = "light", isBold = true, defaultTextValueKey = "itemLevel", defaultTooltipTitleTemplate = "Item level %s" },
-        { columnKey = "b", width = 40, columnTitle = "Raid Difficulty / Track", defaultTooltipTitleTemplate = "Raid / track at item level %s" },
-        { columnKey = "c", width = 40, columnTitle = "Raid Difficulty / Track", defaultTooltipTitleTemplate = "Raid / track at item level %s" },
-        { columnKey = "d", width = 40, columnTitle = "Raid Difficulty / Track", defaultTooltipTitleTemplate = "Raid / track at item level %s" },
-        { columnKey = "e", width = 40, columnTitle = "Raid Difficulty / Track", defaultTooltipTitleTemplate = "Raid / track at item level %s" },
-        { columnKey = "f", width = 40, columnTitle = "Raid Difficulty / Track", defaultTooltipTitleTemplate = "Raid / track at item level %s" },
-        { columnKey = "g", width = 40, columnTitle = "Raid Difficulty / Track", defaultTooltipTitleTemplate = "Raid / track at item level %s" },
-        { columnKey = "h", width = 43, columnTitle = "Craft", defaultTooltipTitleTemplate = "Crafting at item level %s" },
-        { columnKey = "i", width = 43, columnTitle = "Craft", defaultTooltipTitleTemplate = "Crafting at item level %s" },
-        { columnKey = "j", width = 62, columnTitle = "Prey", defaultTooltipTitleTemplate = "Prey at item level %s" },
-        { columnKey = "k", width = 62, columnTitle = "Delve", defaultTooltipTitleTemplate = "Delve at item level %s" },
-        { columnKey = "l", width = 62, columnTitle = "Map", defaultTooltipTitleTemplate = "Map at item level %s" },
-        { columnKey = "m", width = 62, columnTitle = "Great Vault", defaultTooltipTitleTemplate = "Great Vault at item level %s" },
-        { columnKey = "n", width = 62, columnTitle = "Dungeon", defaultTooltipTitleTemplate = "Dungeon at item level %s" },
-        { columnKey = "o", width = 62, columnTitle = "Dungeon Great Vault", defaultTooltipTitleTemplate = "Dungeon Great Vault at item level %s" },
-        { columnKey = "p", width = 46, columnTitle = "Item level", defaultColorKey = "light", isBold = true, defaultTextValueKey = "itemLevel", defaultTooltipTitleTemplate = "Item level %s" },
+        { col = "a", width = 46, title = "Item level", bg = "light", bold = true, value = "itemLevel", tooltip = { title = "Item level %s" } },
+        { col = "b", width = 40, title = "Raid Difficulty / Track", tooltip = { title = "Raid / track at item level %s" } },
+        { col = "c", width = 40, title = "Raid Difficulty / Track", tooltip = { title = "Raid / track at item level %s" } },
+        { col = "d", width = 40, title = "Raid Difficulty / Track", tooltip = { title = "Raid / track at item level %s" } },
+        { col = "e", width = 40, title = "Raid Difficulty / Track", tooltip = { title = "Raid / track at item level %s" } },
+        { col = "f", width = 40, title = "Raid Difficulty / Track", tooltip = { title = "Raid / track at item level %s" } },
+        { col = "g", width = 40, title = "Raid Difficulty / Track", tooltip = { title = "Raid / track at item level %s" } },
+        { col = "h", width = 43, title = "Craft", tooltip = { title = "Crafting at item level %s" } },
+        { col = "i", width = 43, title = "Craft", tooltip = { title = "Crafting at item level %s" } },
+        { col = "j", width = 62, title = "Prey", tooltip = { title = "Prey at item level %s" } },
+        { col = "k", width = 62, title = "Delve", tooltip = { title = "Delve at item level %s" } },
+        { col = "l", width = 62, title = "Map", tooltip = { title = "Map at item level %s" } },
+        { col = "m", width = 62, title = "Great Vault", tooltip = { title = "Great Vault at item level %s" } },
+        { col = "n", width = 62, title = "Dungeon", tooltip = { title = "Dungeon at item level %s" } },
+        { col = "o", width = 62, title = "Dungeon Great Vault", tooltip = { title = "Dungeon Great Vault at item level %s" } },
+        { col = "p", width = 46, title = "Item level", bg = "light", bold = true, value = "itemLevel", tooltip = { title = "Item level %s" } },
     },
     headers = {
-        { startColumnKey = "a", endColumnKey = "a", displayText = "ilvl", cellCoordinate = "a1" },
-        { startColumnKey = "b", endColumnKey = "g", displayText = "Raid Difficulty / Track", cellCoordinate = "b1" },
-        { startColumnKey = "h", endColumnKey = "i", displayText = "Craft", cellCoordinate = "h1" },
-        { startColumnKey = "j", endColumnKey = "j", displayText = "Prey", cellCoordinate = "j1" },
-        { startColumnKey = "k", endColumnKey = "k", displayText = "Delve", cellCoordinate = "k1" },
-        { startColumnKey = "l", endColumnKey = "l", displayText = "Map", cellCoordinate = "l1" },
-        { startColumnKey = "m", endColumnKey = "m", displayText = "GV", cellCoordinate = "m1" },
-        { startColumnKey = "n", endColumnKey = "n", displayText = "Dung.", cellCoordinate = "n1" },
-        { startColumnKey = "o", endColumnKey = "o", displayText = "GV", cellCoordinate = "o1" },
-        { startColumnKey = "p", endColumnKey = "p", displayText = "ilvl", cellCoordinate = "p1" },
+        { fromCol = "a", toCol = "a", text = "ilvl", coord = "a1" },
+        { fromCol = "b", toCol = "g", text = "Raid Difficulty / Track", coord = "b1" },
+        { fromCol = "h", toCol = "i", text = "Craft", coord = "h1" },
+        { fromCol = "j", toCol = "j", text = "Prey", coord = "j1" },
+        { fromCol = "k", toCol = "k", text = "Delve", coord = "k1" },
+        { fromCol = "l", toCol = "l", text = "Map", coord = "l1" },
+        { fromCol = "m", toCol = "m", text = "GV", coord = "m1" },
+        { fromCol = "n", toCol = "n", text = "Dung.", coord = "n1" },
+        { fromCol = "o", toCol = "o", text = "GV", coord = "o1" },
+        { fromCol = "p", toCol = "p", text = "ilvl", coord = "p1" },
     },
     bodyRows = {
-        rowSource = "itemLevels",
-        firstRowIndex = 2,
+        source = "itemLevels",
+        firstRow = 2,
     },
 })
 
 BorderRule({
-    borderAxis = "horizontal",
+    axis = "horizontal",
     fromRow = 1,
     toRow = 1,
-    appliesToEachCell = true,
-    borderStyleKey = "solid3",
+    each = true,
+    style = "solid3",
     priority = 100,
 })
 
 BorderRule({
-    borderAxis = "horizontal",
-    appliesToEachCell = true,
-    borderStyleKey = "dashed",
+    axis = "horizontal",
+    each = true,
+    style = "dashed",
     priority = 1,
 })
 
 local function PrimarySectionBorder(definition)
     BorderRule({
-        borderAxis = "vertical",
-        afterColumnKey = definition.afterColumnKey,
+        axis = "vertical",
+        afterCol = definition.afterCol,
         fromRow = 1,
         toRow = #NS.Data.levels + 1,
-        borderStyleKey = "solid3",
+        style = "solid3",
         priority = 70,
     })
 end
 
-PrimarySectionBorder({ afterColumnKey = "a" })
-PrimarySectionBorder({ afterColumnKey = "g" })
-PrimarySectionBorder({ afterColumnKey = "i" })
-PrimarySectionBorder({ afterColumnKey = "j" })
-PrimarySectionBorder({ afterColumnKey = "m" })
-PrimarySectionBorder({ afterColumnKey = "o" })
+PrimarySectionBorder({ afterCol = "a" })
+PrimarySectionBorder({ afterCol = "g" })
+PrimarySectionBorder({ afterCol = "i" })
+PrimarySectionBorder({ afterCol = "j" })
+PrimarySectionBorder({ afterCol = "m" })
+PrimarySectionBorder({ afterCol = "o" })
 
 Block({
-    blockId = "raid.lfr",
-    backgroundColorKey = "blue",
-    outerBorderStyleKey = "solid1",
-    innerBorderStyleKey = "dashed",
-    metadata = { contentType = "raid", difficulty = "lfr" },
+    id = "raid.lfr",
+    bg = "blue",
+    border = "solid1",
+    innerBorder = "dashed",
     cells = {
-        Cell({ columnKey = "b", itemLevel = 272, displayText = "GV", tooltipTitle = "Champion Great Vault Reward", backgroundColorKey = "yellow", metadata = { valueType = "dropItemLevel" } }),
-        MergedCell({ columnKey = "b", fromItemLevel = 276, toItemLevel = 282, displayText = "LFR", isTextVertical = true }),
-        Cell({ columnKey = "b", itemLevel = 276, tooltipTitle = "LFR raid drops", metadata = { valueType = "dropItemLevel" } }),
-        Cell({ columnKey = "b", itemLevel = 279, tooltipTitle = "LFR raid drops", metadata = { valueType = "dropItemLevel" } }),
-        Cell({ columnKey = "b", itemLevel = 282, tooltipTitle = "LFR raid drops", metadata = { valueType = "dropItemLevel" } }),
-        Cell({ columnKey = "b", itemLevel = 289, tooltipTitle = "LFR raid drops", metadata = { valueType = "dropItemLevel" } }),
-        Cell({ columnKey = "c", itemLevel = 272, displayText = "1/6", tooltipTitle = "LFR upgrade rank", metadata = { valueType = "upgradeRank" } }),
-        Cell({ columnKey = "c", itemLevel = 276, displayText = "2/6", tooltipTitle = "LFR upgrade rank", metadata = { valueType = "upgradeRank" } }),
-        Cell({ columnKey = "c", itemLevel = 279, displayText = "3/6", tooltipTitle = "LFR upgrade rank", metadata = { valueType = "upgradeRank" } }),
-        Cell({ columnKey = "c", itemLevel = 282, displayText = "4/6", tooltipTitle = "LFR upgrade rank", metadata = { valueType = "upgradeRank" } }),
-        Cell({ columnKey = "c", itemLevel = 285, displayText = "5/6", tooltipTitle = "LFR upgrade rank", metadata = { valueType = "upgradeRank" } }),
-        Cell({ columnKey = "c", itemLevel = 289, displayText = "6/6", tooltipTitle = "LFR upgrade rank", metadata = { valueType = "upgradeRank" } }),
-        MergedCell({ columnKey = "d", fromItemLevel = 272, toItemLevel = 289, displayText = "Veteran", isTextVertical = true }),
+        Cell({ col = "b", row = 12, text = "GV", bg = "yellow", tooltip = { title = "Champion Great Vault Reward" } }),
+        MergedCell({ col = "b", row = 13, toRow = 15, text = "LFR", vertical = true }),
+        Cell({ col = "b", row = 13, tooltip = { title = "LFR raid drops" } }),
+        Cell({ col = "b", row = 14, tooltip = { title = "LFR raid drops" } }),
+        Cell({ col = "b", row = 15, tooltip = { title = "LFR raid drops" } }),
+        Cell({ col = "b", row = 17, tooltip = { title = "LFR raid drops" } }),
+        Cell({ col = "c", row = 12, text = "1/6", tooltip = { title = "LFR upgrade rank" } }),
+        Cell({ col = "c", row = 13, text = "2/6", tooltip = { title = "LFR upgrade rank" } }),
+        Cell({ col = "c", row = 14, text = "3/6", tooltip = { title = "LFR upgrade rank" } }),
+        Cell({ col = "c", row = 15, text = "4/6", tooltip = { title = "LFR upgrade rank" } }),
+        Cell({ col = "c", row = 16, text = "5/6", tooltip = { title = "LFR upgrade rank" } }),
+        Cell({ col = "c", row = 17, text = "6/6", tooltip = { title = "LFR upgrade rank" } }),
+        MergedCell({ col = "d", row = 12, toRow = 17, text = "Veteran", vertical = true }),
     },
 })
 
