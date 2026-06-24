@@ -149,14 +149,13 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
     cellsByTable[tableKey] = cellsByTable[tableKey] or {}
     cellsByTable[tableKey][cellCoordinate] = {
         text = cellDefinition.displayText or "",
-        color = cellDefinition.backgroundColorKey,
+        backgroundColorKey = cellDefinition.backgroundColorKey,
         title = cellDefinition.tooltipTitle or blockDefinition.tooltipTitle,
         lines = cellDefinition.tooltipLines,
         level = cellDefinition.itemLevel,
         columnTitle = cellDefinition.columnTitle,
         metadata = MergeTables(blockDefinition.metadata, cellDefinition.metadata),
         onClick = cellDefinition.onClick,
-        hasBackgroundColorOverride = cellDefinition.backgroundColorKey ~= nil,
     }
 
     return cellCoordinate

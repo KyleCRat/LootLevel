@@ -32,6 +32,10 @@ local MERGED_VERTICAL_LABEL_NUDGE_Y = 7
 local MERGED_VERTICAL_LABEL_WIDTH_PADDING = 12
 local MERGED_VERTICAL_LABEL_HEIGHT_PADDING = 2
 
+local STYLE_LAYER_DEFAULT = 10
+local STYLE_LAYER_BLOCK = 20
+local STYLE_LAYER_CELL = 30
+
 local Color
 local TextColorFor
 
@@ -692,6 +696,61 @@ local function EnsureColorBlock(parent, blockData, order)
     return block
 end
 
+local function SetCellStyleLayer(cellData, layerKey, specificity, values)
+    if not cellData or not layerKey or type(values) ~= "table" then
+        return
+    end
+
+    cellData.styleLayers = cellData.styleLayers or {}
+    local layer = cellData.styleLayers[layerKey] or {}
+    layer.specificity = specificity or layer.specificity or 0
+
+    for key, value in pairs(values) do
+        if value ~= nil then
+            layer[key] = value
+        end
+    end
+
+    cellData.styleLayers[layerKey] = layer
+end
+
+local function ResolveCellStyleValue(cellData, valueKey)
+    local bestValue
+    local bestSpecificity = -1
+
+    for _, layer in pairs((cellData and cellData.styleLayers) or {}) do
+        local value = layer[valueKey]
+        local specificity = layer.specificity or 0
+        if value ~= nil and specificity >= bestSpecificity then
+            bestValue = value
+            bestSpecificity = specificity
+        end
+    end
+
+    return bestValue
+end
+
+local function ResolveCellBackgroundColor(cellData)
+    return ResolveCellStyleValue(cellData, "backgroundColorKey") or "blank"
+end
+
+local function ApplyCellResolvedStyle(cell)
+    local cellData = cell and cell.cellData
+    if not cellData then
+        return
+    end
+
+    local backgroundColorKey = ResolveCellBackgroundColor(cellData)
+    cellData.resolvedBackgroundColorKey = backgroundColorKey
+
+    if cell.bg then
+        cell.bg:SetColorTexture(Color(backgroundColorKey))
+    end
+    if cell.text then
+        cell.text:SetTextColor(TextColorFor(backgroundColorKey))
+    end
+end
+
 local function AssignCellToBlock(parent, cell, block)
     if not cell or not block or not cell.coordKey then
         return
@@ -712,11 +771,11 @@ local function AssignCellToBlock(parent, cell, block)
     parent.blockByCoord[cell.coordKey] = block
     cell.cellData.blockId = block.id
 
-    if block.color and not cell.cellData.hasBackgroundColorOverride then
-        cell.bg:SetColorTexture(Color(block.color))
-        if cell.text then
-            cell.text:SetTextColor(TextColorFor(block.color))
-        end
+    if block.color then
+        SetCellStyleLayer(cell.cellData, "block", STYLE_LAYER_BLOCK, {
+            backgroundColorKey = block.color,
+        })
+        ApplyCellResolvedStyle(cell)
     end
 end
 
@@ -1138,6 +1197,12 @@ end
 
 local function CreateCell(parent, x, y, width, height, cellData)
     cellData = cellData or {}
+    SetCellStyleLayer(cellData, "default", STYLE_LAYER_DEFAULT, {
+        backgroundColorKey = cellData.defaultBackgroundColorKey or "blank",
+    })
+    SetCellStyleLayer(cellData, "cell", STYLE_LAYER_CELL, {
+        backgroundColorKey = cellData.backgroundColorKey,
+    })
 
     local cell = CreateFrame("Button", nil, parent)
     SetLayoutBounds(cell, parent, x, y, width, height)
@@ -1147,7 +1212,6 @@ local function CreateCell(parent, x, y, width, height, cellData)
     local bg = cell:CreateTexture(nil, "BACKGROUND")
     ApplyTexturePixelSnapping(bg)
     bg:SetAllPoints(cell)
-    bg:SetColorTexture(Color(cellData.color or "blank"))
     cell.bg = bg
 
     local highlight = cell:CreateTexture(nil, "HIGHLIGHT")
@@ -1158,8 +1222,8 @@ local function CreateCell(parent, x, y, width, height, cellData)
     local text = CreateText(cell, cellData.text or "", cellData.fontSize or 12, "black", "CENTER", "MIDDLE", cellData.bold)
     text:SetPoint("CENTER", cell, "CENTER", 0, 0)
     SetLayoutSize(text, math.max(1, width - 4), math.max(1, height - 4))
-    text:SetTextColor(TextColorFor(cellData.color))
     cell.text = text
+    ApplyCellResolvedStyle(cell)
 
     cell:SetScript("OnEnter", function(self)
         ShowCellTooltip(self)
@@ -1189,7 +1253,7 @@ end
 local function CreateHeader(parent, x, y, width, height, text, cellData)
     return CreateCell(parent, x, y, width, height, MergeCellData({
         text = text,
-        color = "header",
+        backgroundColorKey = "header",
         bold = true,
         fontSize = 13,
         title = text,
@@ -1462,7 +1526,7 @@ local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y)
             tableKey = tableKey,
             coord = coord,
             text = data.text or DefaultCellText(columnDefinition, rowDefinition),
-            color = data.color or columnDefinition.defaultColorKey or "blank",
+            defaultBackgroundColorKey = columnDefinition.defaultColorKey or "blank",
             bold = columnDefinition.isBold,
             level = rowDefinition.itemLevel,
             title = data.title or FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition),
