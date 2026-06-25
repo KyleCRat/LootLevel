@@ -319,6 +319,13 @@ local function ColumnBorders(definition)
     AddBorderRule(BorderRuleBase(definition, "columnBorders"))
 end
 
+-- TableBorder draws outside edges around the rendered table grid.
+-- It uses the registered table cells, so merged headers still produce one continuous edge.
+-- Example: TableBorder({ style = "solid1" })
+local function TableBorder(definition)
+    AddBorderRule(BorderRuleBase(definition, "tableBorder"))
+end
+
 -- RowBorder draws one horizontal border across a column range on one row.
 -- edge defaults to "bottom"; use edge = "top" for the row's top border.
 -- Example: RowBorder({ row = 17, fromCol = "b", toCol = "f", style = "solid3" })
@@ -332,12 +339,15 @@ local function RowBorder(definition)
     AddBorderRule(rule)
 end
 
--- ColumnBorder draws one vertical border after a column for a row range.
+-- ColumnBorder draws one vertical border before or after a column for a row range.
+-- Use beforeCol for the column's left edge or afterCol for the column's right edge.
 -- Omit toRow to extend to the last rendered row in that table.
+-- Example: ColumnBorder({ beforeCol = "a", fromRow = 1, style = "solid1" })
 -- Example: ColumnBorder({ afterCol = "g", fromRow = 1, style = "solid3" })
 local function ColumnBorder(definition)
     definition = definition or {}
     local rule = BorderRuleBase(definition, "columnBorder")
+    rule.beforeCol = definition.beforeCol
     rule.afterCol = definition.afterCol
     rule.fromRow = definition.fromRow
     rule.toRow = definition.toRow
@@ -362,6 +372,7 @@ NS.DataAPI = {
     MergedCell = MergedCell,
     RowBorders = RowBorders,
     ColumnBorders = ColumnBorders,
+    TableBorder = TableBorder,
     RowBorder = RowBorder,
     ColumnBorder = ColumnBorder,
     BetweenCellsBorder = BetweenCellsBorder,

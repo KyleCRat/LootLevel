@@ -1052,6 +1052,52 @@ local function GridRowBounds(grid)
     return firstRow, lastRow
 end
 
+local function GridColumnBounds(columns)
+    local firstColumn
+    local lastColumn
+
+    for column in pairs(columns or {}) do
+        if not firstColumn or column < firstColumn then
+            firstColumn = column
+        end
+        if not lastColumn or column > lastColumn then
+            lastColumn = column
+        end
+    end
+
+    return firstColumn, lastColumn
+end
+
+local function StoreRowCellsEdge(parent, columns, edge, rule, order)
+    for _, cell in pairs(columns or {}) do
+        StoreExplicitEdge(parent, cell, edge, rule, order)
+    end
+end
+
+local function ApplyTableBorderRule(parent, rule, order)
+    for tableKey, grid in pairs(parent.gridTables or {}) do
+        if ShouldApplyRuleToTable(rule, tableKey) then
+            local firstRow, lastRow = GridRowBounds(grid)
+            if firstRow and lastRow then
+                for _, columns in pairs(grid.rows or {}) do
+                    local firstColumn, lastColumn = GridColumnBounds(columns)
+                    if firstColumn and lastColumn then
+                        StoreExplicitEdge(parent, columns[firstColumn], "left", rule, order)
+                        StoreExplicitEdge(parent, columns[lastColumn], "right", rule, order)
+                    end
+                end
+
+                if firstRow == 1 then
+                    StoreRowCellsEdge(parent, grid.rows[firstRow], "top", rule, order)
+                end
+                if lastRow > 1 then
+                    StoreRowCellsEdge(parent, grid.rows[lastRow], "bottom", rule, order)
+                end
+            end
+        end
+    end
+end
+
 local function ApplyRowBordersRule(parent, rule, order)
     for tableKey, grid in pairs(parent.gridTables or {}) do
         if ShouldApplyRuleToTable(rule, tableKey) then
@@ -1110,7 +1156,12 @@ end
 
 local function ApplyColumnBorderRule(parent, rule, order)
     local tableKey = rule.table or "main"
+    local edge = "right"
     local column = ColumnIndex(rule.afterCol)
+    if rule.beforeCol then
+        edge = "left"
+        column = ColumnIndex(rule.beforeCol)
+    end
     if not column or column < 1 then
         return
     end
@@ -1134,7 +1185,7 @@ local function ApplyColumnBorderRule(parent, rule, order)
 
     for row = fromRow, toRow do
         local cell = grid and grid.rows[row] and grid.rows[row][column]
-        StoreExplicitEdge(parent, cell, "right", rule, order)
+        StoreExplicitEdge(parent, cell, edge, rule, order)
     end
 end
 
@@ -1172,6 +1223,8 @@ local function DrawExplicitBorderRules(parent)
             ApplyRowBordersRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
         elseif rule.kind == "columnBorders" then
             ApplyColumnBordersRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+        elseif rule.kind == "tableBorder" then
+            ApplyTableBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
         elseif rule.kind == "betweenCellsBorder" then
             ApplyBetweenCellsBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
         elseif rule.kind == "columnBorder" then
