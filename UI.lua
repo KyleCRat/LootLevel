@@ -432,6 +432,18 @@ local function RegisterPatternedGridLine(overlay, line, segmentLength, segmentGa
     end
 end
 
+local function RegisterStyledGridLine(overlay, line)
+    if line.style == "dotted" then
+        RegisterPatternedGridLine(overlay, line, DOTTED_GRID_DOT, DOTTED_GRID_GAP)
+    elseif line.style == "dashed" then
+        RegisterPatternedGridLine(overlay, line, DASHED_GRID_DASH, DASHED_GRID_GAP)
+    elseif line.style == "solid" then
+        RegisterGridLineTexture(overlay, line)
+    else
+        RegisterGridLineTexture(overlay, line)
+    end
+end
+
 local function ColumnName(index)
     index = tonumber(index)
     if not index or index < 1 then
@@ -506,6 +518,43 @@ local function ParseCoord(coord)
 
     local column, row = coord:match("^([a-z]+)(%d+)$")
     return ColumnIndex(column), tonumber(row), coord
+end
+
+local function NormalizeCellSpan(anchorColumn, anchorRow, definition)
+    local fromColumn = tonumber(definition and (definition.gridFromColumn or definition.fromColumn)) or anchorColumn
+    local toColumn = tonumber(definition and (definition.gridToColumn or definition.toColumn)) or anchorColumn
+    local fromRow = tonumber(definition and (definition.gridFromRow or definition.fromRow)) or anchorRow
+    local toRow = tonumber(definition and (definition.gridToRow or definition.toRow)) or anchorRow
+
+    if not fromColumn or not toColumn or not fromRow or not toRow then
+        return nil
+    end
+
+    if fromColumn > toColumn then
+        fromColumn, toColumn = toColumn, fromColumn
+    end
+    if fromRow > toRow then
+        fromRow, toRow = toRow, fromRow
+    end
+
+    return {
+        fromColumn = fromColumn,
+        toColumn = toColumn,
+        fromRow = fromRow,
+        toRow = toRow,
+    }
+end
+
+local function ForEachCellSpanCoord(span, callback)
+    if not span or type(callback) ~= "function" then
+        return
+    end
+
+    for row = span.fromRow, span.toRow do
+        for column = span.fromColumn, span.toColumn do
+            callback(column, row, CoordFromIndex(column, row))
+        end
+    end
 end
 
 local function CoordKey(tableKey, coord)
@@ -624,18 +673,31 @@ local function RegisterCellCoordinate(parent, cell, cellData, x, y, width, heigh
 
     parent.cellsByCoord = parent.cellsByCoord or {}
 
-    local key = CoordKey(tableKey, coord)
-    parent.cellsByCoord[key] = cell
-
     local grid = EnsureGrid(parent, tableKey)
-    grid.rows[row] = grid.rows[row] or {}
-    grid.rows[row][column] = cell
+    local span = NormalizeCellSpan(column, row, cellData.span or cellData)
+    if not span then
+        return
+    end
 
-    cell.coordKey = key
+    ForEachCellSpanCoord(span, function(gridColumn, gridRow, spanCoord)
+        local key = CoordKey(tableKey, spanCoord)
+        if key then
+            parent.cellsByCoord[key] = cell
+        end
+        grid.rows[gridRow] = grid.rows[gridRow] or {}
+        grid.rows[gridRow][gridColumn] = cell
+    end)
+
+    cell.coordKey = CoordKey(tableKey, coord)
     cell.gridTable = tableKey
     cell.gridCoord = coord
     cell.gridColumn = column
+    cell.gridFromColumn = span.fromColumn
+    cell.gridToColumn = span.toColumn
     cell.gridRow = row
+    cell.gridFromRow = span.fromRow
+    cell.gridToRow = span.toRow
+    cell.gridSpan = span
     cell.gridBounds = {
         x = Pixel(x),
         y = Pixel(y),
@@ -741,13 +803,13 @@ local function GetNeighborCell(parent, cell, edge)
     local row = cell.gridRow
     local column = cell.gridColumn
     if edge == "left" then
-        column = column - 1
+        column = (cell.gridFromColumn or column) - 1
     elseif edge == "right" then
-        column = column + 1
+        column = (cell.gridToColumn or column) + 1
     elseif edge == "top" then
-        row = row - 1
+        row = (cell.gridFromRow or row) - 1
     elseif edge == "bottom" then
-        row = row + 1
+        row = (cell.gridToRow or row) + 1
     end
 
     local grid = parent.gridTables and parent.gridTables[cell.gridTable]
@@ -1001,18 +1063,22 @@ end
 
 local function DrawCellBorderOverrides(parent)
     local edges = { "left", "right", "top", "bottom" }
+    local seenCells = {}
     for _, grid in pairs(parent.gridTables or {}) do
         for _, columns in pairs(grid.rows or {}) do
             for _, cell in pairs(columns or {}) do
-                local border = cell.cellData and cell.cellData.border
-                if border ~= nil then
-                    for _, edge in ipairs(edges) do
-                        local edgeStyle = CellBorderEdgeStyle(border, edge)
-                        if edgeStyle ~= nil then
-                            StoreExplicitEdge(parent, cell, edge, {
-                                style = edgeStyle,
-                                priority = CellBorderEdgePriority(border, edgeStyle),
-                            }, CELL_BORDER_ORDER)
+                if cell and not seenCells[cell] then
+                    seenCells[cell] = true
+                    local border = cell.cellData and cell.cellData.border
+                    if border ~= nil then
+                        for _, edge in ipairs(edges) do
+                            local edgeStyle = CellBorderEdgeStyle(border, edge)
+                            if edgeStyle ~= nil then
+                                StoreExplicitEdge(parent, cell, edge, {
+                                    style = edgeStyle,
+                                    priority = CellBorderEdgePriority(border, edgeStyle),
+                                }, CELL_BORDER_ORDER)
+                            end
                         end
                     end
                 end
@@ -1108,7 +1174,7 @@ local function ApplyRowBordersRule(parent, rule, order)
                     local isExplicitRowRule = fromRow and toRow
                     for column, cell in pairs(columns) do
                         local nextRow = grid.rows[row + 1]
-                        if isExplicitRowRule or (nextRow and nextRow[column]) then
+                        if isExplicitRowRule or (nextRow and nextRow[column] and nextRow[column] ~= cell) then
                             StoreExplicitEdge(parent, cell, "bottom", rule, order)
                         end
                     end
@@ -1124,7 +1190,7 @@ local function ApplyColumnBordersRule(parent, rule, order)
             for _, columns in pairs(grid.rows or {}) do
                 for column, cell in pairs(columns) do
                     local nextCell = columns[column + 1]
-                    if nextCell then
+                    if nextCell and nextCell ~= cell then
                         StoreExplicitEdge(parent, cell, "right", rule, order)
                     end
                 end
@@ -1144,6 +1210,9 @@ local function ApplyBetweenCellsBorderRule(parent, rule, order)
     local firstCell = GetCellByCoord(parent, tableKey, leftCoord)
     local secondCell = GetCellByCoord(parent, tableKey, rightCoord)
     if not firstCell or not secondCell then
+        return
+    end
+    if firstCell == secondCell then
         return
     end
 
@@ -1259,18 +1328,45 @@ local function DrawGridLines(parent)
     overlay.lines = {}
 
     for _, line in pairs(parent.gridLines) do
-        if line.style == "dotted" then
-            RegisterPatternedGridLine(overlay, line, DOTTED_GRID_DOT, DOTTED_GRID_GAP)
-        elseif line.style == "dashed" then
-            RegisterPatternedGridLine(overlay, line, DASHED_GRID_DASH, DASHED_GRID_GAP)
-        elseif line.style == "solid" then
-            RegisterGridLineTexture(overlay, line)
-        else
-            RegisterGridLineTexture(overlay, line)
-        end
+        RegisterStyledGridLine(overlay, line)
     end
 
     parent.gridOverlay = overlay
+end
+
+local function DrawTableBodyViewportBorder(scroll, tableDefinition, width, visibleRows)
+    if not scroll or scroll.tableBorderOverlay or not tableDefinition or not tableDefinition.key then
+        return
+    end
+
+    local height = math.max(1, visibleRows * ROW_HEIGHT)
+    local holder = {}
+    for index, rule in ipairs(NS.Data.borderRules or {}) do
+        if rule.kind == "tableBorder" and ShouldApplyRuleToTable(rule, tableDefinition.key) then
+            StoreGridLine(holder, {
+                vertical = false,
+                y = height,
+                x1 = 0,
+                x2 = width,
+            }, CopyBorderStyle(rule.style, rule.priority or EXPLICIT_BORDER_PRIORITY, EXPLICIT_BORDER_PRIORITY + index))
+        end
+    end
+
+    if not holder.gridLines then
+        return
+    end
+
+    local overlay = CreateFrame("Frame", nil, scroll)
+    overlay:SetAllPoints(scroll)
+    overlay:SetFrameLevel(scroll:GetFrameLevel() + 100)
+    overlay:EnableMouse(false)
+    overlay.lines = {}
+
+    for _, line in pairs(holder.gridLines) do
+        RegisterStyledGridLine(overlay, line)
+    end
+
+    scroll.tableBorderOverlay = overlay
 end
 
 local function GetPhysicalSize()
@@ -1412,9 +1508,18 @@ local function FormatGridTooltipLine(cell)
         return nil
     end
 
+    local tablePrefix = cell.gridTable and cell.gridTable ~= "main" and (cell.gridTable .. " ") or ""
+    local span = cell.gridSpan
+    if span and (span.fromColumn ~= span.toColumn or span.fromRow ~= span.toRow) then
+        local startCoord = CoordFromIndex(span.fromColumn, span.fromRow)
+        local endCoord = CoordFromIndex(span.toColumn, span.toRow)
+        if startCoord and endCoord and startCoord ~= endCoord then
+            return ("Merged cell: %s%s-%s"):format(tablePrefix, string.upper(startCoord), string.upper(endCoord))
+        end
+    end
+
     local column = string.upper(ColumnName(cell.gridColumn) or "")
     local coord = string.upper(cell.gridCoord)
-    local tablePrefix = cell.gridTable and cell.gridTable ~= "main" and (cell.gridTable .. " ") or ""
     return ("Cell: %s%s  Column: %s  Row: %d"):format(tablePrefix, coord, column, cell.gridRow)
 end
 
@@ -1488,6 +1593,54 @@ local function AttachTableBodyWheel(frame, scroll)
     end)
 end
 
+local function GetUnscaledFontMeasurement(fontString, methodName)
+    local method = fontString and fontString[methodName]
+    if not method then
+        return nil
+    end
+
+    local value = method(fontString)
+    if value and value > 0 then
+        return value / GetLayoutScale()
+    end
+
+    return nil
+end
+
+local function CreateVerticalText(parent, x, y, width, height, text, font, bold)
+    local resolvedFontSize = FontSize(font, 13)
+    local fs = CreateText(parent, text, FontWithFallbackSize(font, 13), "black", "CENTER", "MIDDLE", bold)
+
+    if fs.SetRotation then
+        local maxTextWidth = math.max(1, height)
+        local maxTextHeight = math.max(1, width - 4)
+        local stringWidth = GetUnscaledFontMeasurement(fs, "GetStringWidth")
+        local stringHeight = GetUnscaledFontMeasurement(fs, "GetStringHeight")
+            or GetUnscaledFontMeasurement(fs, "GetLineHeight")
+        local labelWidth = math.min(maxTextWidth, math.max(1, (stringWidth or maxTextWidth) + MERGED_VERTICAL_LABEL_WIDTH_PADDING))
+        local labelHeight = math.min(maxTextHeight, math.max(1, (stringHeight or resolvedFontSize) + MERGED_VERTICAL_LABEL_HEIGHT_PADDING))
+        local centerX = x + (width / 2) + MERGED_VERTICAL_LABEL_NUDGE_X
+        local centerY = y + (height / 2) + MERGED_VERTICAL_LABEL_NUDGE_Y
+
+        SetLayoutBox(
+            fs,
+            "CENTER",
+            parent,
+            "TOPLEFT",
+            centerX,
+            -centerY,
+            labelWidth,
+            labelHeight
+        )
+        fs:SetRotation(math.pi / 2)
+    else
+        SetLayoutBounds(fs, parent, x, y, width, height)
+        fs:SetText((text or ""):gsub("(.)", "%1\n"))
+    end
+
+    return fs
+end
+
 local function CreateCell(parent, x, y, width, height, cellData)
     cellData = cellData or {}
     SetCellStyleLayer(cellData, "default", STYLE_LAYER_DEFAULT, {
@@ -1512,9 +1665,14 @@ local function CreateCell(parent, x, y, width, height, cellData)
     highlight:SetAllPoints()
     highlight:SetColorTexture(1, 1, 1, 0.22)
 
-    local text = CreateText(cell, cellData.text or "", FontWithFallbackSize(cellData.font, 12), "black", "CENTER", "MIDDLE", cellData.bold)
-    text:SetPoint("CENTER", cell, "CENTER", 0, 0)
-    SetLayoutSize(text, math.max(1, width - 4), math.max(1, height - 4))
+    local text
+    if cellData.vertical then
+        text = CreateVerticalText(cell, 0, 0, width, height, cellData.text or "", cellData.font, cellData.bold)
+    else
+        text = CreateText(cell, cellData.text or "", FontWithFallbackSize(cellData.font, 12), "black", "CENTER", "MIDDLE", cellData.bold)
+        text:SetPoint("CENTER", cell, "CENTER", 0, 0)
+        SetLayoutSize(text, math.max(1, width - 4), math.max(1, height - 4))
+    end
     cell.text = text
     ApplyCellResolvedStyle(cell)
 
@@ -1556,168 +1714,6 @@ local function CreateHeader(parent, x, y, width, height, text, cellData)
         tooltip = { title = text },
         colTitle = text,
     }, cellData))
-end
-
-local function GetUnscaledFontMeasurement(fontString, methodName)
-    local method = fontString and fontString[methodName]
-    if not method then
-        return nil
-    end
-
-    local value = method(fontString)
-    if value and value > 0 then
-        return value / GetLayoutScale()
-    end
-
-    return nil
-end
-
-local function CreateOverlayLabel(parent, x, y, width, height, text, font)
-    local resolvedFontSize = FontSize(font, 13)
-    local fs = CreateText(parent, text, FontWithFallbackSize(font, 13), "black", "CENTER", "MIDDLE", false)
-
-    if fs.SetRotation then
-        local maxTextWidth = math.max(1, height)
-        local maxTextHeight = math.max(1, width - 4)
-        local stringWidth = GetUnscaledFontMeasurement(fs, "GetStringWidth")
-        local stringHeight = GetUnscaledFontMeasurement(fs, "GetStringHeight")
-            or GetUnscaledFontMeasurement(fs, "GetLineHeight")
-        local labelWidth = math.min(maxTextWidth, math.max(1, (stringWidth or maxTextWidth) + MERGED_VERTICAL_LABEL_WIDTH_PADDING))
-        local labelHeight = math.min(maxTextHeight, math.max(1, (stringHeight or resolvedFontSize) + MERGED_VERTICAL_LABEL_HEIGHT_PADDING))
-        local centerX = x + (width / 2) + MERGED_VERTICAL_LABEL_NUDGE_X
-        local centerY = y + (height / 2) + MERGED_VERTICAL_LABEL_NUDGE_Y
-
-        SetLayoutBox(
-            fs,
-            "CENTER",
-            parent,
-            "TOPLEFT",
-            centerX,
-            -centerY,
-            labelWidth,
-            labelHeight
-        )
-        fs:SetRotation(math.pi / 2)
-    else
-        SetLayoutBounds(fs, parent, x, y, width, height)
-        fs:SetText((text or ""):gsub("(.)", "%1\n"))
-    end
-
-    return fs
-end
-
-local function FormatMergedCellRange(mergedCell)
-    local startCoord = mergedCell.startCoord and string.upper(mergedCell.startCoord)
-    local endCoord = mergedCell.endCoord and string.upper(mergedCell.endCoord)
-    if not startCoord then
-        return nil
-    end
-
-    if endCoord and endCoord ~= startCoord then
-        return ("Merged cell: %s-%s"):format(startCoord, endCoord)
-    end
-
-    return ("Merged cell: %s"):format(startCoord)
-end
-
-local function GetMergedCellOverlay(parent)
-    if parent.mergedCellOverlay then
-        return parent.mergedCellOverlay
-    end
-
-    local overlay = CreateFrame("Frame", nil, parent)
-    overlay:SetAllPoints(parent)
-    overlay:SetFrameLevel(parent:GetFrameLevel() + 90)
-    overlay:EnableMouse(false)
-    parent.mergedCellOverlay = overlay
-    return overlay
-end
-
-local function CreateMergedCellHitTarget(parent, overlay, x, y, width, height, mergedCell)
-    local hitTarget = CreateFrame("Button", nil, overlay)
-    SetLayoutBounds(hitTarget, overlay, x, y, width, height)
-    hitTarget:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    hitTarget:EnableMouse(true)
-    hitTarget:SetFrameLevel(overlay:GetFrameLevel() + 10)
-
-    hitTarget.cellData = {
-        text = mergedCell.text or "",
-        bg = mergedCell.bg,
-        tooltip = mergedCell.tooltip or { title = mergedCell.text or "Merged cell" },
-        colTitle = mergedCell.colTitle or "Merged cell",
-        onClick = mergedCell.onClick,
-    }
-    hitTarget.gridLabel = FormatMergedCellRange(mergedCell)
-
-    local highlight = hitTarget:CreateTexture(nil, "HIGHLIGHT")
-    ApplyTexturePixelSnapping(highlight)
-    highlight:SetAllPoints()
-    highlight:SetColorTexture(1, 1, 1, 0.22)
-
-    hitTarget:SetScript("OnEnter", function(self)
-        ShowCellTooltip(self)
-    end)
-
-    hitTarget:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-    hitTarget:SetScript("OnClick", function(self, button)
-        local onClick = self.cellData and self.cellData.onClick
-        if type(onClick) == "function" then
-            onClick(self, button, self.cellData)
-            return
-        end
-
-        if NS.HandleCellClick then
-            NS:HandleCellClick(self.cellData, button)
-        end
-    end)
-
-    if parent.bodyScrollFrame then
-        AttachTableBodyWheel(hitTarget, parent.bodyScrollFrame)
-    end
-
-    return hitTarget
-end
-
-local function CreateMergedCellLabel(parent, mergedCell)
-    local tableKey = mergedCell.table or "main"
-    local startCell = GetCellByCoord(parent, tableKey, mergedCell.startCoord)
-    local endCell = GetCellByCoord(parent, tableKey, mergedCell.endCoord or mergedCell.startCoord)
-    if not startCell or not endCell or not startCell.gridBounds or not endCell.gridBounds then
-        return
-    end
-
-    local startBounds = startCell.gridBounds
-    local endBounds = endCell.gridBounds
-    local x1 = math.min(startBounds.x, endBounds.x)
-    local y1 = math.min(startBounds.y, endBounds.y)
-    local x2 = math.max(startBounds.x + startBounds.width, endBounds.x + endBounds.width)
-    local y2 = math.max(startBounds.y + startBounds.height, endBounds.y + endBounds.height)
-    local overlay = GetMergedCellOverlay(parent)
-
-    if mergedCell.bg then
-        local background = overlay:CreateTexture(nil, "BACKGROUND")
-        ApplyTexturePixelSnapping(background)
-        background:SetColorTexture(Color(mergedCell.bg))
-        SetLayoutBounds(background, overlay, x1, y1, x2 - x1, y2 - y1)
-    end
-
-    if mergedCell.vertical ~= false then
-        CreateOverlayLabel(overlay, x1, y1, x2 - x1, y2 - y1, mergedCell.text, mergedCell.font)
-    else
-        local fs = CreateText(overlay, mergedCell.text, FontWithFallbackSize(mergedCell.font, 13), "black", "CENTER", "MIDDLE", false)
-        SetLayoutBounds(fs, overlay, x1, y1, x2 - x1, y2 - y1)
-    end
-
-    CreateMergedCellHitTarget(parent, overlay, x1, y1, x2 - x1, y2 - y1, mergedCell)
-end
-
-local function DrawMergedCells(parent)
-    for _, mergedCell in ipairs(NS.Data.mergedCells or {}) do
-        CreateMergedCellLabel(parent, mergedCell)
-    end
 end
 
 local function ColumnKey(columnDefinition, fallbackIndex)
@@ -1768,6 +1764,67 @@ local function TableWidth(tableDefinition)
     return TableColumnWidth(tableDefinition, 1, #(tableDefinition.columns or {}))
 end
 
+local function TableColumnIndexByGridColumn(tableDefinition, gridColumn)
+    return TableColumnIndex(tableDefinition, ColumnName(gridColumn))
+end
+
+local function SpanTableColumnRange(tableDefinition, span)
+    local fromColumnIndex = TableColumnIndexByGridColumn(tableDefinition, span and span.fromColumn)
+    local toColumnIndex = TableColumnIndexByGridColumn(tableDefinition, span and span.toColumn)
+    if not fromColumnIndex or not toColumnIndex then
+        return nil, nil
+    end
+
+    if fromColumnIndex > toColumnIndex then
+        fromColumnIndex, toColumnIndex = toColumnIndex, fromColumnIndex
+    end
+
+    return fromColumnIndex, toColumnIndex
+end
+
+local function SpanVisualHeight(span, rowLayout)
+    if not span then
+        return ROW_HEIGHT
+    end
+
+    local byRow = rowLayout and rowLayout.byRow
+    local startRow = byRow and byRow[span.fromRow]
+    local endRow = byRow and byRow[span.toRow]
+    if not startRow or not endRow then
+        return ROW_HEIGHT
+    end
+
+    return math.max(1, ((endRow.visualIndex - startRow.visualIndex) + 1) * ROW_HEIGHT)
+end
+
+local function BuildTableSpanMap(tableDefinition, rowLayout)
+    local tableKey = tableDefinition.key
+    local spanMap = {}
+
+    for _, mergedCell in ipairs(NS.Data.mergedCells or {}) do
+        if mergedCell.table == tableKey then
+            local span = NormalizeCellSpan(nil, nil, mergedCell.span)
+            local anchorCoord = span and CoordFromIndex(span.fromColumn, span.fromRow)
+            local fromColumnIndex, toColumnIndex = SpanTableColumnRange(tableDefinition, span)
+            if span and anchorCoord and fromColumnIndex and toColumnIndex then
+                local record = {
+                    anchorCoord = anchorCoord,
+                    cellData = mergedCell,
+                    span = span,
+                    fromColumnIndex = fromColumnIndex,
+                    toColumnIndex = toColumnIndex,
+                    height = SpanVisualHeight(span, rowLayout),
+                }
+                ForEachCellSpanCoord(span, function(_, _, coord)
+                    spanMap[coord] = record
+                end)
+            end
+        end
+    end
+
+    return spanMap
+end
+
 local function FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition)
     local columnTitle = columnDefinition.title or ColumnKey(columnDefinition)
     if columnDefinition.tooltip and columnDefinition.tooltip.title then
@@ -1793,9 +1850,13 @@ local function BuildDataTableHeader(parent, tableDefinition, x, y)
             local headerX = TableColumnX(tableDefinition, x, fromColumnIndex)
             local width = TableColumnWidth(tableDefinition, fromColumnIndex, toColumnIndex)
             local coord = headerDefinition.coord or ColumnCoord(tableDefinition.columns[fromColumnIndex], fromColumnIndex, 1)
+            local fromGridColumn = ColumnIndex(ColumnKey(tableDefinition.columns[fromColumnIndex], fromColumnIndex))
+            local toGridColumn = ColumnIndex(ColumnKey(tableDefinition.columns[toColumnIndex], toColumnIndex))
             CreateHeader(parent, headerX, y, width, HEADER_HEIGHT, headerDefinition.text or "", {
                 table = tableKey,
                 coord = coord,
+                gridFromColumn = fromGridColumn,
+                gridToColumn = toGridColumn,
                 tooltip = headerDefinition.tooltip or { title = headerDefinition.text or tableDefinition.name },
                 colTitle = headerDefinition.title or headerDefinition.text or tableDefinition.name,
             })
@@ -1803,23 +1864,33 @@ local function BuildDataTableHeader(parent, tableDefinition, x, y)
     end
 end
 
-local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y)
+local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y, rowLayout, spanMap)
     local tableKey = tableDefinition.key
     local colX = x
     for columnIndex, columnDefinition in ipairs(tableDefinition.columns or {}) do
         local coord = ColumnCoord(columnDefinition, columnIndex, rowDefinition.row)
-        local data = GetConfiguredCellData(tableKey, coord) or {}
-        local columnTitle = columnDefinition.title or ColumnKey(columnDefinition, columnIndex)
+        local spanRecord = spanMap and spanMap[coord]
+        if not spanRecord or spanRecord.anchorCoord == coord then
+            local data = spanRecord and spanRecord.cellData or GetConfiguredCellData(tableKey, coord) or {}
+            local columnTitle = columnDefinition.title or ColumnKey(columnDefinition, columnIndex)
+            local width = columnDefinition.width
+            local height = ROW_HEIGHT
 
-        CreateCell(parent, colX, y, columnDefinition.width, ROW_HEIGHT, MergeCellData({
-            table = tableKey,
-            coord = coord,
-            text = data.text or "",
-            defaultBg = columnDefinition.bg or "blank",
-            bold = columnDefinition.bold,
-            tooltip = data.tooltip or { title = FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition) },
-            colTitle = columnTitle,
-        }, data))
+            if spanRecord then
+                width = TableColumnWidth(tableDefinition, spanRecord.fromColumnIndex, spanRecord.toColumnIndex)
+                height = spanRecord.height or SpanVisualHeight(spanRecord.span, rowLayout)
+            end
+
+            CreateCell(parent, colX, y, width, height, MergeCellData({
+                table = tableKey,
+                coord = coord,
+                text = data.text or "",
+                defaultBg = columnDefinition.bg or "blank",
+                bold = columnDefinition.bold,
+                tooltip = data.tooltip or { title = FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition) },
+                colTitle = columnTitle,
+            }, data))
+        end
         colX = colX + columnDefinition.width
     end
 end
@@ -1840,10 +1911,16 @@ local function IncludeInferredCoord(bounds, coord)
     IncludeInferredBodyRow(bounds, row)
 end
 
-local function IncludeInferredCoordRange(bounds, startCoord, endCoord)
+local function IncludeInferredCoordRange(bounds, startCoord, endCoord, range)
+    local span = NormalizeCellSpan(nil, nil, range)
+    if span then
+        IncludeInferredBodyRow(bounds, span.fromRow)
+        IncludeInferredBodyRow(bounds, span.toRow)
+        return
+    end
+
     local _, startRow = ParseCoord(startCoord)
     local _, endRow = ParseCoord(endCoord or startCoord)
-
     IncludeInferredBodyRow(bounds, startRow)
     IncludeInferredBodyRow(bounds, endRow)
 end
@@ -1858,7 +1935,7 @@ local function InferTableBodyRowRange(tableDefinition)
 
     for _, mergedCell in ipairs(NS.Data.mergedCells or {}) do
         if mergedCell.table == tableKey then
-            IncludeInferredCoordRange(bounds, mergedCell.startCoord, mergedCell.endCoord)
+            IncludeInferredCoordRange(bounds, mergedCell.startCoord, mergedCell.endCoord, mergedCell.span)
         end
     end
 
@@ -1950,6 +2027,33 @@ local function CountVisualRows(rows)
     return count
 end
 
+local function BuildBodyRowLayout(rows)
+    local layout = {
+        byRow = {},
+        totalRows = 0,
+    }
+    local visualRowIndex = 0
+
+    for _, rowDefinition in ipairs(rows or {}) do
+        if rowDefinition.marginRows then
+            visualRowIndex = visualRowIndex + (tonumber(rowDefinition.marginRows) or 0)
+        else
+            local row = tonumber(rowDefinition.row)
+            if row then
+                layout.byRow[row] = {
+                    visualIndex = visualRowIndex,
+                    y = visualRowIndex * ROW_HEIGHT,
+                    definition = rowDefinition,
+                }
+            end
+            visualRowIndex = visualRowIndex + 1
+        end
+    end
+
+    layout.totalRows = visualRowIndex
+    return layout
+end
+
 local function DisplayedBodyRows(tableDefinition, totalRows)
     local displayedRows = tonumber(tableDefinition.displayedRows)
     if not displayedRows or displayedRows < 1 then
@@ -1996,13 +2100,13 @@ local function CreateTableBodyScroll(parent, x, y, width, visibleRows, totalRows
     return scroll, child
 end
 
-local function BuildDataTableRows(parent, tableDefinition, rows, x, y)
+local function BuildDataTableRows(parent, tableDefinition, rows, x, y, rowLayout, spanMap)
     local visualRowIndex = 0
     for _, rowDefinition in ipairs(rows or {}) do
         if rowDefinition.marginRows then
-            visualRowIndex = visualRowIndex + rowDefinition.marginRows
+            visualRowIndex = visualRowIndex + (tonumber(rowDefinition.marginRows) or 0)
         else
-            BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + (visualRowIndex * ROW_HEIGHT))
+            BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + (visualRowIndex * ROW_HEIGHT), rowLayout, spanMap)
             visualRowIndex = visualRowIndex + 1
         end
     end
@@ -2016,7 +2120,8 @@ local function BuildDataTable(parent, tableDefinition)
     local x = tableDefinition.x or 0
     local y = tableDefinition.y or 0
     local rows = CollectTableBodyRows(tableDefinition)
-    local totalRows = CountVisualRows(rows)
+    local rowLayout = BuildBodyRowLayout(rows)
+    local totalRows = rowLayout.totalRows or CountVisualRows(rows)
     if totalRows <= 0 then
         BuildDataTableHeader(parent, tableDefinition, x, y)
         return
@@ -2025,10 +2130,11 @@ local function BuildDataTable(parent, tableDefinition)
     BuildDataTableHeader(parent, tableDefinition, x, y)
 
     local visibleRows = DisplayedBodyRows(tableDefinition, totalRows)
+    local spanMap = BuildTableSpanMap(tableDefinition, rowLayout)
     local bodyScroll, bodyContent = CreateTableBodyScroll(parent, x, y + HEADER_HEIGHT, TableWidth(tableDefinition), visibleRows, totalRows)
-    BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0)
-    DrawMergedCells(bodyContent)
+    BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0, rowLayout, spanMap)
     DrawGridLines(bodyContent)
+    DrawTableBodyViewportBorder(bodyScroll, tableDefinition, TableWidth(tableDefinition), visibleRows)
     ClampScrollFrame(bodyScroll)
 end
 

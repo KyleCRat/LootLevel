@@ -118,6 +118,49 @@ local function CellCoordinate(definition)
     return ("%s%d"):format(definition.col, definition.row)
 end
 
+local function ParseCellCoordinate(coord)
+    local columnKey, row = tostring(coord or ""):lower():match("^([a-z]+)(%d+)$")
+    local column = ColumnIndex(columnKey)
+    row = tonumber(row)
+    if not column or not row then
+        return nil
+    end
+
+    return column, row, ("%s%d"):format(columnKey, row)
+end
+
+local function NormalizeCellRange(startCoord, endCoord)
+    local startColumn, startRow = ParseCellCoordinate(startCoord)
+    local endColumn, endRow = ParseCellCoordinate(endCoord or startCoord)
+    if not startColumn or not endColumn or not startRow or not endRow then
+        return nil
+    end
+
+    if startColumn > endColumn then
+        startColumn, endColumn = endColumn, startColumn
+    end
+    if startRow > endRow then
+        startRow, endRow = endRow, startRow
+    end
+
+    local coordinates = {}
+    for row = startRow, endRow do
+        for column = startColumn, endColumn do
+            coordinates[#coordinates + 1] = ("%s%d"):format(ColumnKeyFromIndex(column), row)
+        end
+    end
+
+    return {
+        fromColumn = startColumn,
+        toColumn = endColumn,
+        fromRow = startRow,
+        toRow = endRow,
+        fromCoord = ("%s%d"):format(ColumnKeyFromIndex(startColumn), startRow),
+        toCoord = ("%s%d"):format(ColumnKeyFromIndex(endColumn), endRow),
+        coordinates = coordinates,
+    }
+end
+
 local function Table(definition)
     if not definition or not definition.key then
         return nil
@@ -177,61 +220,41 @@ local function MergedCellCoordinate(definition, isEndCoordinate)
     })
 end
 
-local function MergedCellCoordinates(definition)
+local function MergedCellSpan(definition)
     local startCellCoordinate = MergedCellCoordinate(definition, false)
     local endCellCoordinate = MergedCellCoordinate(definition, true)
-    if not startCellCoordinate or not endCellCoordinate then
-        return nil, nil, nil
-    end
-
-    local startColumnKey, startRow = startCellCoordinate:match("^([a-z]+)(%d+)$")
-    local endColumnKey, endRow = endCellCoordinate:match("^([a-z]+)(%d+)$")
-    local startColumn = ColumnIndex(startColumnKey)
-    local endColumn = ColumnIndex(endColumnKey)
-    startRow = tonumber(startRow)
-    endRow = tonumber(endRow)
-    if not startColumn or not endColumn or not startRow or not endRow then
-        return nil, nil, nil
-    end
-
-    if startColumn > endColumn then
-        startColumn, endColumn = endColumn, startColumn
-    end
-    if startRow > endRow then
-        startRow, endRow = endRow, startRow
-    end
-
-    local coordinates = {}
-    for row = startRow, endRow do
-        for column = startColumn, endColumn do
-            coordinates[#coordinates + 1] = ("%s%d"):format(ColumnKeyFromIndex(column), row)
-        end
-    end
-
-    return coordinates, startCellCoordinate, endCellCoordinate
+    return NormalizeCellRange(startCellCoordinate, endCellCoordinate)
 end
 
 local function RegisterMergedCell(blockDefinition, cellDefinition)
     local tableKey = cellDefinition.table or blockDefinition.table or "main"
-    local coordinates, startCellCoordinate, endCellCoordinate = MergedCellCoordinates(cellDefinition)
-    if not coordinates then
+    local span = MergedCellSpan(cellDefinition)
+    if not span then
         return nil
     end
 
-    mergedCells[#mergedCells + 1] = {
+    local mergedCell = {
         table = tableKey,
-        startCoord = startCellCoordinate,
-        endCoord = endCellCoordinate,
-        text = cellDefinition.text,
-        bg = cellDefinition.bg or blockDefinition.bg,
+        startCoord = span.fromCoord,
+        endCoord = span.toCoord,
+        span = span,
+        text = cellDefinition.text or "",
+        bg = cellDefinition.bg,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip or DefaultTooltip(cellDefinition.text),
         colTitle = cellDefinition.title,
+        bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
         vertical = cellDefinition.vertical ~= false,
         font = MergeFontStyles(blockDefinition, cellDefinition),
+        border = cellDefinition.border,
         onClick = cellDefinition.onClick,
     }
 
-    return coordinates
+    mergedCells[#mergedCells + 1] = mergedCell
+
+    cellsByTable[tableKey] = cellsByTable[tableKey] or {}
+    cellsByTable[tableKey][span.fromCoord] = mergedCell
+
+    return span.coordinates
 end
 
 local function Block(definition)
