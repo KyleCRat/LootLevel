@@ -238,6 +238,12 @@ local function RefreshScaledLayout()
     if NS.scaleButtonText then
         NS.scaleButtonText:SetText(FormatScalePercent(GetScalePercent()))
     end
+
+    for _, scrollFrame in ipairs(NS.tableBodyScrolls or {}) do
+        local range = scrollFrame:GetVerticalScrollRange() or 0
+        local current = scrollFrame:GetVerticalScroll() or 0
+        scrollFrame:SetVerticalScroll(Clamp(current, 0, range))
+    end
 end
 
 local function ApplyTexturePixelSnapping(texture)
@@ -881,9 +887,10 @@ local function ApplyEveryBorderRule(parent, rule, order)
                     local fromRow = tonumber(rule.from)
                     local toRow = tonumber(rule.to or fromRow)
                     if not fromRow or (row >= fromRow and row <= toRow) then
+                        local isExplicitRowRule = fromRow and toRow
                         for column, cell in pairs(columns) do
                             local nextRow = grid.rows[row + 1]
-                            if nextRow and nextRow[column] then
+                            if isExplicitRowRule or (nextRow and nextRow[column]) then
                                 StoreExplicitEdge(parent, cell, "bottom", rule, order)
                             end
                         end
@@ -1228,6 +1235,28 @@ local function ShowCellTooltip(cell)
     GameTooltip:Show()
 end
 
+local function ScrollTableBodyByWheel(scroll, delta)
+    if not scroll then
+        return
+    end
+
+    local amount = ScalePixel(ROW_HEIGHT * 3)
+    local nextOffset = (scroll:GetVerticalScroll() or 0) - ((delta or 0) * amount)
+    scroll:SetVerticalScroll(Clamp(nextOffset, 0, scroll:GetVerticalScrollRange() or 0))
+end
+
+local function AttachTableBodyWheel(frame, scroll)
+    if not frame or not scroll then
+        return
+    end
+
+    frame:EnableMouse(true)
+    frame:EnableMouseWheel(true)
+    frame:SetScript("OnMouseWheel", function(_, delta)
+        ScrollTableBodyByWheel(scroll, delta)
+    end)
+end
+
 local function CreateCell(parent, x, y, width, height, cellData)
     cellData = cellData or {}
     SetCellStyleLayer(cellData, "default", STYLE_LAYER_DEFAULT, {
@@ -1277,6 +1306,10 @@ local function CreateCell(parent, x, y, width, height, cellData)
             NS:HandleCellClick(self.cellData, button)
         end
     end)
+
+    if parent.bodyScrollFrame then
+        AttachTableBodyWheel(cell, parent.bodyScrollFrame)
+    end
 
     parent.cells[#parent.cells + 1] = cell
     RegisterCellCoordinate(parent, cell, cellData, x, y, width, height)
@@ -1410,6 +1443,10 @@ local function CreateMergedCellHitTarget(parent, overlay, x, y, width, height, m
         end
     end)
 
+    if parent.bodyScrollFrame then
+        AttachTableBodyWheel(hitTarget, parent.bodyScrollFrame)
+    end
+
     return hitTarget
 end
 
@@ -1494,6 +1531,10 @@ local function TableColumnWidth(tableDefinition, fromColumnIndex, toColumnIndex)
     end
 
     return width
+end
+
+local function TableWidth(tableDefinition)
+    return TableColumnWidth(tableDefinition, 1, #(tableDefinition.columns or {}))
 end
 
 local function FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition)
@@ -1657,6 +1698,85 @@ local function BuildTableBodyRows(tableDefinition, addRow)
     end
 end
 
+local function CollectTableBodyRows(tableDefinition)
+    local rows = {}
+    BuildTableBodyRows(tableDefinition, function(rowDefinition)
+        rows[#rows + 1] = rowDefinition
+    end)
+    return rows
+end
+
+local function CountVisualRows(rows)
+    local count = 0
+    for _, rowDefinition in ipairs(rows or {}) do
+        if rowDefinition.marginRows then
+            count = count + (tonumber(rowDefinition.marginRows) or 0)
+        else
+            count = count + 1
+        end
+    end
+
+    return count
+end
+
+local function DisplayedBodyRows(tableDefinition, totalRows)
+    local displayedRows = tonumber(tableDefinition.displayedRows)
+    if not displayedRows or displayedRows < 1 then
+        return totalRows
+    end
+
+    return math.min(totalRows, math.floor(displayedRows))
+end
+
+local function ClampScrollFrame(scroll)
+    if not scroll then
+        return
+    end
+
+    local range = scroll:GetVerticalScrollRange() or 0
+    local current = scroll:GetVerticalScroll() or 0
+    scroll:SetVerticalScroll(Clamp(current, 0, range))
+end
+
+local function CreateTableBodyScroll(parent, x, y, width, visibleRows, totalRows)
+    local visibleHeight = math.max(1, visibleRows * ROW_HEIGHT)
+    local contentHeight = math.max(visibleHeight, totalRows * ROW_HEIGHT)
+    local scroll = CreateFrame("ScrollFrame", nil, parent)
+    local child = CreateFrame("Frame", nil, scroll)
+    local canScroll = totalRows > visibleRows
+
+    SetLayoutBounds(scroll, parent, x, y, width, visibleHeight)
+    SetLayoutSize(child, width, contentHeight)
+    child:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, 0)
+    child.cells = parent.cells
+    child.bodyScrollFrame = canScroll and scroll or nil
+    scroll:SetScrollChild(child)
+
+    scroll:EnableMouse(canScroll)
+    scroll:EnableMouseWheel(canScroll)
+    if canScroll then
+        AttachTableBodyWheel(scroll, scroll)
+        AttachTableBodyWheel(child, scroll)
+    end
+
+    NS.tableBodyScrolls = NS.tableBodyScrolls or {}
+    NS.tableBodyScrolls[#NS.tableBodyScrolls + 1] = scroll
+
+    return scroll, child
+end
+
+local function BuildDataTableRows(parent, tableDefinition, rows, x, y)
+    local visualRowIndex = 0
+    for _, rowDefinition in ipairs(rows or {}) do
+        if rowDefinition.marginRows then
+            visualRowIndex = visualRowIndex + rowDefinition.marginRows
+        else
+            BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + (visualRowIndex * ROW_HEIGHT))
+            visualRowIndex = visualRowIndex + 1
+        end
+    end
+end
+
 local function BuildDataTable(parent, tableDefinition)
     if not tableDefinition or not tableDefinition.key then
         return
@@ -1664,19 +1784,21 @@ local function BuildDataTable(parent, tableDefinition)
 
     local x = tableDefinition.x or 0
     local y = tableDefinition.y or 0
-    local visualRowIndex = 0
+    local rows = CollectTableBodyRows(tableDefinition)
+    local totalRows = CountVisualRows(rows)
+    if totalRows <= 0 then
+        BuildDataTableHeader(parent, tableDefinition, x, y)
+        return
+    end
 
     BuildDataTableHeader(parent, tableDefinition, x, y)
 
-    BuildTableBodyRows(tableDefinition, function(rowDefinition)
-        if rowDefinition.marginRows then
-            visualRowIndex = visualRowIndex + rowDefinition.marginRows
-            return
-        end
-
-        BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + HEADER_HEIGHT + (visualRowIndex * ROW_HEIGHT))
-        visualRowIndex = visualRowIndex + 1
-    end)
+    local visibleRows = DisplayedBodyRows(tableDefinition, totalRows)
+    local bodyScroll, bodyContent = CreateTableBodyScroll(parent, x, y + HEADER_HEIGHT, TableWidth(tableDefinition), visibleRows, totalRows)
+    BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0)
+    DrawMergedCells(bodyContent)
+    DrawGridLines(bodyContent)
+    ClampScrollFrame(bodyScroll)
 end
 
 local function BuildRegisteredTables(parent)
@@ -1803,6 +1925,7 @@ function NS:CreateMainFrame()
     self.db.scalePercent = NormalizeScalePercent(self.db.scalePercent)
     self.layoutRecords = {}
     self.layoutFonts = {}
+    self.tableBodyScrolls = {}
     SetLayoutSize(frame, FRAME_WIDTH, FRAME_HEIGHT)
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)
@@ -1864,7 +1987,6 @@ function NS:CreateMainFrame()
     content.cells = frame.cells
 
     BuildRegisteredTables(content)
-    DrawMergedCells(content)
     DrawGridLines(content)
     BuildFooter(frame)
 
