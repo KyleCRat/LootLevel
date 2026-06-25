@@ -72,6 +72,40 @@ local function ValueOrDefault(value, defaultValue)
     return defaultValue
 end
 
+local function CopyFontStyle(definition)
+    if type(definition) ~= "table" then
+        return nil
+    end
+
+    if type(definition.font) == "table" then
+        local font = {}
+        for key, value in pairs(definition.font) do
+            font[key] = value
+        end
+        return font
+    end
+
+    return nil
+end
+
+local function MergeFontStyles(defaultDefinition, overrideDefinition)
+    local defaultFont = CopyFontStyle(defaultDefinition)
+    local overrideFont = CopyFontStyle(overrideDefinition)
+    if not defaultFont and not overrideFont then
+        return nil
+    end
+
+    local merged = {}
+    for key, value in pairs(defaultFont or {}) do
+        merged[key] = value
+    end
+    for key, value in pairs(overrideFont or {}) do
+        merged[key] = value
+    end
+
+    return merged
+end
+
 local function CellCoordinate(definition)
     if definition.coord then
         return definition.coord
@@ -121,7 +155,7 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip,
         colTitle = cellDefinition.title,
         bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
-        font = cellDefinition.font or blockDefinition.font,
+        font = MergeFontStyles(blockDefinition, cellDefinition),
         onClick = cellDefinition.onClick,
     }
 
@@ -192,7 +226,7 @@ local function RegisterMergedCell(blockDefinition, cellDefinition)
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip or DefaultTooltip(cellDefinition.text),
         colTitle = cellDefinition.title,
         vertical = cellDefinition.vertical ~= false,
-        font = cellDefinition.font,
+        font = MergeFontStyles(blockDefinition, cellDefinition),
         onClick = cellDefinition.onClick,
     }
 

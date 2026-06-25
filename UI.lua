@@ -166,7 +166,7 @@ local function ApplyFontRecord(record)
     end
 
     local size = math.max(1, ScalePixel(record.size))
-    fontString:SetFont(record.path, size, record.flags)
+    fontString:SetFont(record.path, size, record.flags or "")
 end
 
 local function RegisterLayoutRecord(record)
@@ -224,6 +224,121 @@ local function SetLayoutPoints(region, points, width, height)
         width = width,
         height = height,
     })
+end
+
+local VALID_FONT_FLAGS = {
+    [""] = true,
+    OUTLINE = true,
+    THICKOUTLINE = true,
+    MONOCHROME = true,
+    SLUG = true,
+    OUTLINESLUG = true,
+    MONOCHROMEOUTLINE = true,
+    MONOCHROMETHICKOUTLINE = true,
+}
+
+local function NormalizeFontFlagString(value)
+    local flags = tostring(value or ""):upper():gsub("[%s,]+", "")
+    if VALID_FONT_FLAGS[flags] then
+        return flags
+    end
+
+    return ""
+end
+
+local function NormalizeFontOutline(value)
+    if value == true then
+        return "OUTLINE"
+    end
+    if value == false or value == nil then
+        return ""
+    end
+
+    local outline = tostring(value):lower()
+    if outline == "normal" or outline == "outline" then
+        return "OUTLINE"
+    end
+    if outline == "thick" or outline == "thickoutline" then
+        return "THICKOUTLINE"
+    end
+
+    return ""
+end
+
+local function FontFlags(font)
+    if type(font) ~= "table" then
+        return ""
+    end
+
+    if font.flags ~= nil then
+        return NormalizeFontFlagString(font.flags)
+    end
+
+    local outlineValue = font.outline
+    if outlineValue == nil then
+        outlineValue = font.border
+    end
+
+    local outline = NormalizeFontOutline(outlineValue)
+    local monochrome = font.monochrome == true
+    local slug = font.slug == true
+
+    if monochrome then
+        if outline == "THICKOUTLINE" then
+            return "MONOCHROMETHICKOUTLINE"
+        end
+        if outline == "OUTLINE" then
+            return "MONOCHROMEOUTLINE"
+        end
+        return "MONOCHROME"
+    end
+
+    if outline == "THICKOUTLINE" then
+        return "THICKOUTLINE"
+    end
+    if outline == "OUTLINE" then
+        return slug and "OUTLINESLUG" or "OUTLINE"
+    end
+
+    return slug and "SLUG" or ""
+end
+
+local function FontSize(font, fallbackSize)
+    if type(font) == "table" then
+        return tonumber(font.size) or fallbackSize
+    end
+
+    return fallbackSize
+end
+
+local function FontWithFallbackSize(font, fallbackSize)
+    if type(font) ~= "table" then
+        return { size = fallbackSize }
+    end
+
+    local copy = {}
+    for key, value in pairs(font) do
+        copy[key] = value
+    end
+    if copy.size == nil then
+        copy.size = fallbackSize
+    end
+
+    return copy
+end
+
+local function ResolveTextFont(font, fallbackSize, bold)
+    local size = math.max(1, FontSize(font, fallbackSize or 12))
+    local path = bold and NS.FONT_BOLD_PATH or NS.FONT_PATH
+    if type(font) == "table" and type(font.path) == "string" then
+        path = font.path
+    end
+
+    return {
+        path = path,
+        size = size,
+        flags = FontFlags(font),
+    }
 end
 
 local function RefreshScaledLayout()
@@ -1127,13 +1242,14 @@ TextColorFor = function(colorName)
     return 0, 0, 0, 1
 end
 
-local function CreateText(parent, text, size, colorName, justifyH, justifyV, bold)
+local function CreateText(parent, text, font, colorName, justifyH, justifyV, bold)
     local fs = parent:CreateFontString(nil, "OVERLAY")
+    local resolvedFont = ResolveTextFont(font, 12, bold)
     RegisterFontRecord({
         fontString = fs,
-        path = bold and NS.FONT_BOLD_PATH or NS.FONT_PATH,
-        size = size or 12,
-        flags = "",
+        path = resolvedFont.path,
+        size = resolvedFont.size,
+        flags = resolvedFont.flags,
     })
     fs:SetText(text or "")
     fs:SetJustifyH(justifyH or "CENTER")
@@ -1281,7 +1397,7 @@ local function CreateCell(parent, x, y, width, height, cellData)
     highlight:SetAllPoints()
     highlight:SetColorTexture(1, 1, 1, 0.22)
 
-    local text = CreateText(cell, cellData.text or "", cellData.font or 12, "black", "CENTER", "MIDDLE", cellData.bold)
+    local text = CreateText(cell, cellData.text or "", FontWithFallbackSize(cellData.font, 12), "black", "CENTER", "MIDDLE", cellData.bold)
     text:SetPoint("CENTER", cell, "CENTER", 0, 0)
     SetLayoutSize(text, math.max(1, width - 4), math.max(1, height - 4))
     cell.text = text
@@ -1321,7 +1437,7 @@ local function CreateHeader(parent, x, y, width, height, text, cellData)
         text = text,
         bg = "header",
         bold = true,
-        font = 13,
+        font = { size = 13 },
         tooltip = { title = text },
         colTitle = text,
     }, cellData))
@@ -1341,9 +1457,9 @@ local function GetUnscaledFontMeasurement(fontString, methodName)
     return nil
 end
 
-local function CreateOverlayLabel(parent, x, y, width, height, text, fontSize)
-    fontSize = fontSize or 13
-    local fs = CreateText(parent, text, fontSize, "black", "CENTER", "MIDDLE", false)
+local function CreateOverlayLabel(parent, x, y, width, height, text, font)
+    local resolvedFontSize = FontSize(font, 13)
+    local fs = CreateText(parent, text, FontWithFallbackSize(font, 13), "black", "CENTER", "MIDDLE", false)
 
     if fs.SetRotation then
         local maxTextWidth = math.max(1, height)
@@ -1352,7 +1468,7 @@ local function CreateOverlayLabel(parent, x, y, width, height, text, fontSize)
         local stringHeight = GetUnscaledFontMeasurement(fs, "GetStringHeight")
             or GetUnscaledFontMeasurement(fs, "GetLineHeight")
         local labelWidth = math.min(maxTextWidth, math.max(1, (stringWidth or maxTextWidth) + MERGED_VERTICAL_LABEL_WIDTH_PADDING))
-        local labelHeight = math.min(maxTextHeight, math.max(1, (stringHeight or fontSize) + MERGED_VERTICAL_LABEL_HEIGHT_PADDING))
+        local labelHeight = math.min(maxTextHeight, math.max(1, (stringHeight or resolvedFontSize) + MERGED_VERTICAL_LABEL_HEIGHT_PADDING))
         local centerX = x + (width / 2) + MERGED_VERTICAL_LABEL_NUDGE_X
         local centerY = y + (height / 2) + MERGED_VERTICAL_LABEL_NUDGE_Y
 
@@ -1474,9 +1590,9 @@ local function CreateMergedCellLabel(parent, mergedCell)
     end
 
     if mergedCell.vertical ~= false then
-        CreateOverlayLabel(overlay, x1, y1, x2 - x1, y2 - y1, mergedCell.text, mergedCell.font or 13)
+        CreateOverlayLabel(overlay, x1, y1, x2 - x1, y2 - y1, mergedCell.text, mergedCell.font)
     else
-        local fs = CreateText(overlay, mergedCell.text, mergedCell.font or 13, "black", "CENTER", "MIDDLE", false)
+        local fs = CreateText(overlay, mergedCell.text, FontWithFallbackSize(mergedCell.font, 13), "black", "CENTER", "MIDDLE", false)
         SetLayoutBounds(fs, overlay, x1, y1, x2 - x1, y2 - y1)
     end
 
@@ -1814,10 +1930,10 @@ local function BuildFooter(parent)
         { point = "BOTTOMRIGHT", relativeTo = parent, relativePoint = "BOTTOMRIGHT", x = -PADDING, y = 8 },
     }, nil, 22)
 
-    local left = CreateText(footer, NS.Data.footerLeft, 12, "white", "LEFT", "MIDDLE", false)
+    local left = CreateText(footer, NS.Data.footerLeft, { size = 12 }, "white", "LEFT", "MIDDLE", false)
     SetLayoutBox(left, "LEFT", footer, "LEFT", 0, 0, 720, 20)
 
-    local right = CreateText(footer, NS.Data.footerRight, 12, "white", "RIGHT", "MIDDLE", false)
+    local right = CreateText(footer, NS.Data.footerRight, { size = 12 }, "white", "RIGHT", "MIDDLE", false)
     SetLayoutBox(right, "RIGHT", footer, "RIGHT", 0, 0, 410, 20)
 end
 
@@ -1836,7 +1952,7 @@ local function CreateScaleButton(parent)
     highlight:SetAllPoints()
     highlight:SetColorTexture(1, 1, 1, 0.18)
 
-    local label = CreateText(button, FormatScalePercent(GetScalePercent()), 10, "white", "CENTER", "MIDDLE", true)
+    local label = CreateText(button, FormatScalePercent(GetScalePercent()), { size = 10 }, "white", "CENTER", "MIDDLE", true)
     SetLayoutBox(label, "CENTER", button, "CENTER", 0, 0, 42, 16)
     NS.scaleButtonText = label
     NS.scaleButton = button
@@ -1968,10 +2084,10 @@ function NS:CreateMainFrame()
         end
     end)
 
-    local title = CreateText(frame, "LootLevel", 15, "white", "LEFT", "MIDDLE", true)
+    local title = CreateText(frame, "LootLevel", { size = 15 }, "white", "LEFT", "MIDDLE", true)
     SetLayoutBox(title, "TOPLEFT", frame, "TOPLEFT", PADDING, -6, 240, TITLE_HEIGHT - 4)
 
-    local version = CreateText(frame, self.version or "", 11, "muted", "RIGHT", "MIDDLE", false)
+    local version = CreateText(frame, self.version or "", { size = 11 }, "muted", "RIGHT", "MIDDLE", false)
     SetLayoutBox(version, "TOPRIGHT", frame, "TOPRIGHT", -92, -6, 160, TITLE_HEIGHT - 4)
 
     local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")

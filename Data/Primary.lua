@@ -24,7 +24,7 @@ Table({
     name = "Primary item level table",
     x = 354,
     y = 0,
-    displayedRows = 31,
+    displayedRows = 32,
     columns = {
         { col = "a", width = 46, title = "Item level" },
         { col = "b", width = 40, title = "Raid Difficulty / Track" },
@@ -195,7 +195,7 @@ Block({
         Cell({ col = "b", row = 13, tooltip = { title = "LFR raid drops" } }),
         Cell({ col = "b", row = 14, tooltip = { title = "LFR raid drops" } }),
         Cell({ col = "b", row = 15, tooltip = { title = "LFR raid drops" } }),
-        Cell({ col = "b", row = 17, text = "Rare", tooltip = { title = "LFR raid drops" } }),
+        Cell({ col = "b", row = 17, text = "Rare", font = { size = 10 }, tooltip = { title = "LFR raid drops" } }),
         Cell({ col = "c", row = 12, text = "1/6", tooltip = { title = "LFR upgrade rank" } }),
         Cell({ col = "c", row = 13, text = "2/6", tooltip = { title = "LFR upgrade rank" } }),
         Cell({ col = "c", row = 14, text = "3/6", tooltip = { title = "LFR upgrade rank" } }),
