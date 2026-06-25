@@ -18,11 +18,6 @@ local COLORS = {
 
 NS.Colors = COLORS
 
-local levels = {
-    240, 243, 246, 250, 253, 256, 259, 263, 266, 269, 272, 276, 279, 282, 285, 289,
-    292, 295, 298, 302, 305, 308, 311, 315, 318, 321, 324, 328, 331, 334, 337,
-}
-
 local tableOrder = {}
 local tablesByKey = {}
 local blocks = {}
@@ -67,6 +62,14 @@ local function DefaultTooltip(title)
     end
 
     return nil
+end
+
+local function ValueOrDefault(value, defaultValue)
+    if value ~= nil then
+        return value
+    end
+
+    return defaultValue
 end
 
 local function CellCoordinate(definition)
@@ -117,6 +120,8 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
         bg = cellDefinition.bg,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip,
         colTitle = cellDefinition.title,
+        bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
+        font = cellDefinition.font or blockDefinition.font,
         onClick = cellDefinition.onClick,
     }
 
@@ -279,7 +284,6 @@ NS.DataAPI = {
 }
 
 NS.Data = {
-    levels = levels,
     tableOrder = tableOrder,
     tables = tablesByKey,
     blocks = blocks,

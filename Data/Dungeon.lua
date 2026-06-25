@@ -24,6 +24,7 @@ Table({
     name = "Dungeon table",
     x = 0,
     y = 0,
+    rowCount = 19,
     columns = {
         { col = "a", width = 62, title = "Level", bg = "light", bold = true },
         { col = "b", width = 46, title = "Loot", bg = "blank" },
@@ -39,11 +40,6 @@ Table({
         { fromCol = "d", toCol = "e", text = "GV", coord = "d1" },
         { fromCol = "f", toCol = "f", text = "Crest", coord = "f1" },
         { fromCol = "g", toCol = "g", text = "", coord = "g1" },
-    },
-    bodyRows = {
-        source = "explicitRange",
-        firstRow = 2,
-        lastRow = 20,
     },
 })
 

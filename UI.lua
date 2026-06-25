@@ -852,6 +852,22 @@ local function ShouldApplyRuleToTable(rule, tableKey)
     return requested == nil or requested == "all" or requested == tableKey
 end
 
+local function GridRowBounds(grid)
+    local firstRow
+    local lastRow
+
+    for row in pairs((grid and grid.rows) or {}) do
+        if not firstRow or row < firstRow then
+            firstRow = row
+        end
+        if not lastRow or row > lastRow then
+            lastRow = row
+        end
+    end
+
+    return firstRow, lastRow
+end
+
 local function ApplyEveryBorderRule(parent, rule, order)
     local axis = rule.axis
     if axis ~= "h" and axis ~= "v" then
@@ -918,8 +934,15 @@ local function ApplyVerticalBorderRule(parent, rule, order)
         return
     end
 
+    local grid = parent.gridTables and parent.gridTables[tableKey]
     local fromRow = tonumber(rule.from)
-    local toRow = tonumber(rule.to or fromRow)
+    local toRow = tonumber(rule.to)
+    if not fromRow or not toRow then
+        local firstGridRow, lastGridRow = GridRowBounds(grid)
+        fromRow = fromRow or firstGridRow
+        toRow = toRow or lastGridRow
+    end
+
     if not fromRow or not toRow then
         return
     end
@@ -928,7 +951,6 @@ local function ApplyVerticalBorderRule(parent, rule, order)
         fromRow, toRow = toRow, fromRow
     end
 
-    local grid = parent.gridTables and parent.gridTables[tableKey]
     for row = fromRow, toRow do
         local cell = grid and grid.rows[row] and grid.rows[row][column]
         StoreExplicitEdge(parent, cell, "right", rule, order)
@@ -1132,9 +1154,6 @@ local function BuildTooltipLines(cellData, fallbackLabel)
         end
     end
 
-    if cellData.level then
-        lines[#lines + 1] = ("Item level: %s"):format(cellData.level)
-    end
     if cellData.colTitle then
         lines[#lines + 1] = ("Column: %s"):format(cellData.colTitle)
     end
@@ -1480,27 +1499,13 @@ end
 local function FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition)
     local columnTitle = columnDefinition.title or ColumnKey(columnDefinition)
     if columnDefinition.tooltip and columnDefinition.tooltip.title then
-        return columnDefinition.tooltip.title:format(rowDefinition.itemLevel or rowDefinition.row)
+        return columnDefinition.tooltip.title
     end
     if tableDefinition.tooltip and tableDefinition.tooltip.title then
         return tableDefinition.tooltip.title:format(rowDefinition.row, columnTitle)
     end
-    if rowDefinition.itemLevel then
-        return ("%s at item level %s"):format(columnTitle, rowDefinition.itemLevel)
-    end
 
     return ("%s row %d - %s"):format(tableDefinition.name or tableDefinition.key, rowDefinition.row, columnTitle)
-end
-
-local function DefaultCellText(columnDefinition, rowDefinition)
-    if columnDefinition.value == "itemLevel" and rowDefinition.itemLevel then
-        return tostring(rowDefinition.itemLevel)
-    end
-    if columnDefinition.value == "row" and rowDefinition.row then
-        return tostring(rowDefinition.row)
-    end
-
-    return ""
 end
 
 local function BuildDataTableHeader(parent, tableDefinition, x, y)
@@ -1537,10 +1542,9 @@ local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y)
         CreateCell(parent, colX, y, columnDefinition.width, ROW_HEIGHT, MergeCellData({
             table = tableKey,
             coord = coord,
-            text = data.text or DefaultCellText(columnDefinition, rowDefinition),
+            text = data.text or "",
             defaultBg = columnDefinition.bg or "blank",
             bold = columnDefinition.bold,
-            level = rowDefinition.itemLevel,
             tooltip = data.tooltip or { title = FormatDefaultCellTitle(tableDefinition, columnDefinition, rowDefinition) },
             colTitle = columnTitle,
         }, data))
@@ -1548,10 +1552,69 @@ local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y)
     end
 end
 
-local function BuildExplicitRangeRows(tableDefinition, addRow)
-    local bodyRows = tableDefinition.bodyRows or {}
-    local firstRow = bodyRows.firstRow or 2
-    local lastRow = bodyRows.lastRow or firstRow
+local function IncludeInferredBodyRow(bounds, row)
+    row = tonumber(row)
+    if not row or row < 2 then
+        return
+    end
+
+    if not bounds.last or row > bounds.last then
+        bounds.last = row
+    end
+end
+
+local function IncludeInferredCoord(bounds, coord)
+    local _, row = ParseCoord(coord)
+    IncludeInferredBodyRow(bounds, row)
+end
+
+local function IncludeInferredCoordRange(bounds, startCoord, endCoord)
+    local _, startRow = ParseCoord(startCoord)
+    local _, endRow = ParseCoord(endCoord or startCoord)
+
+    IncludeInferredBodyRow(bounds, startRow)
+    IncludeInferredBodyRow(bounds, endRow)
+end
+
+local function InferTableBodyRowRange(tableDefinition)
+    local tableKey = tableDefinition.key
+    local bounds = {}
+
+    for coord in pairs((NS.Data.cells and NS.Data.cells[tableKey]) or {}) do
+        IncludeInferredCoord(bounds, coord)
+    end
+
+    for _, mergedCell in ipairs(NS.Data.mergedCells or {}) do
+        if mergedCell.table == tableKey then
+            IncludeInferredCoordRange(bounds, mergedCell.startCoord, mergedCell.endCoord)
+        end
+    end
+
+    for _, block in ipairs(NS.Data.colorBlocks or {}) do
+        if block.table == tableKey then
+            for _, coord in ipairs(block.cells or {}) do
+                IncludeInferredCoord(bounds, coord)
+            end
+        end
+    end
+
+    if bounds.last then
+        return 2, bounds.last
+    end
+
+    return nil, nil
+end
+
+local function AddBodyRowRange(firstRow, lastRow, addRow)
+    firstRow = tonumber(firstRow)
+    lastRow = tonumber(lastRow)
+    if not firstRow or not lastRow then
+        return
+    end
+
+    if firstRow > lastRow then
+        firstRow, lastRow = lastRow, firstRow
+    end
 
     for row = firstRow, lastRow do
         addRow({ row = row })
@@ -1559,27 +1622,19 @@ local function BuildExplicitRangeRows(tableDefinition, addRow)
 end
 
 local function BuildTableBodyRows(tableDefinition, addRow)
-    local bodyRows = tableDefinition.bodyRows or {}
-    if bodyRows.source == "itemLevels" then
-        local firstRow = bodyRows.firstRow or 2
-        for index, itemLevel in ipairs(NS.Data.levels or {}) do
-            addRow({
-                row = firstRow + index - 1,
-                itemLevel = itemLevel,
-            })
-        end
-    elseif bodyRows.source == "explicitRange" then
-        BuildExplicitRangeRows(tableDefinition, addRow)
-    elseif bodyRows.rows then
-        for _, rowDefinition in ipairs(bodyRows.rows) do
+    if tableDefinition.rows then
+        for _, rowDefinition in ipairs(tableDefinition.rows) do
             if type(rowDefinition) == "table" then
                 addRow(rowDefinition)
             else
                 addRow({ row = rowDefinition })
             end
         end
-    elseif bodyRows.groups then
-        for groupIndex, groupDefinition in ipairs(bodyRows.groups) do
+        return
+    end
+
+    if tableDefinition.rowGroups then
+        for groupIndex, groupDefinition in ipairs(tableDefinition.rowGroups) do
             if groupIndex > 1 then
                 addRow({ marginRows = groupDefinition.marginTop or 0 })
             end
@@ -1587,6 +1642,18 @@ local function BuildTableBodyRows(tableDefinition, addRow)
                 addRow({ row = row })
             end
         end
+        return
+    end
+
+    local firstRow, lastRow = InferTableBodyRowRange(tableDefinition)
+    if firstRow and lastRow then
+        AddBodyRowRange(firstRow, lastRow, addRow)
+        return
+    end
+
+    local rowCount = tonumber(tableDefinition.rowCount)
+    if rowCount then
+        AddBodyRowRange(2, 2 + rowCount - 1, addRow)
     end
 end
 
