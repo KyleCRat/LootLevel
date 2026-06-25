@@ -5,7 +5,7 @@ local Table = Data.Table
 local RawBlock = Data.Block
 local Cell = Data.Cell
 local MergedCell = Data.MergedCell
-local RawBorderRule = Data.BorderRule
+local RawRowBorders = Data.RowBorders
 
 local TABLE_KEY = "delve"
 
@@ -14,16 +14,17 @@ local function Block(definition)
     return RawBlock(definition)
 end
 
-local function BorderRule(definition)
+local function RowBorders(definition)
+    definition = definition or {}
     definition.table = definition.table or TABLE_KEY
-    return RawBorderRule(definition)
+    return RawRowBorders(definition)
 end
 
 Table({
     key = TABLE_KEY,
     name = "Delve table",
     x = 0,
-    y = 426,
+    y = 408,
     rowCount = 11,
     columns = {
         { col = "a", width = 60, title = "Level", bg = "light", bold = true },
@@ -43,18 +44,14 @@ Table({
     },
 })
 
-BorderRule({
-    axis = "horizontal",
+RowBorders({
     fromRow = 1,
     toRow = 1,
-    each = true,
     style = "solid3",
     priority = 100,
 })
 
-BorderRule({
-    axis = "horizontal",
-    each = true,
+RowBorders({
     style = "dashed",
     priority = 1,
 })

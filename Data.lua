@@ -156,6 +156,7 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
         colTitle = cellDefinition.title,
         bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
         font = MergeFontStyles(blockDefinition, cellDefinition),
+        border = cellDefinition.border,
         onClick = cellDefinition.onClick,
     }
 
@@ -279,34 +280,79 @@ local function Block(definition)
     end
 end
 
-local function NormalizeBorderAxis(axis)
-    if axis == "horizontal" or axis == "h" then
-        return "h"
-    end
-    if axis == "vertical" or axis == "v" then
-        return "v"
-    end
-
-    return axis
-end
-
-local function BorderRule(definition)
-    borderRules[#borderRules + 1] = {
-        axis = NormalizeBorderAxis(definition.axis),
+local function BorderRuleBase(definition, kind)
+    definition = definition or {}
+    return {
+        kind = kind,
         table = definition.table,
         tables = definition.tables,
-        from = definition.fromRow,
-        to = definition.toRow,
-        after = definition.afterCol,
-        row = definition.row,
-        fromCol = definition.fromCol,
-        toCol = definition.toCol,
-        edge = definition.edge,
         style = definition.style,
         priority = definition.priority,
-        each = definition.each,
-        between = definition.between,
     }
+end
+
+local function AddBorderRule(rule)
+    borderRules[#borderRules + 1] = rule
+end
+
+-- Border constructors share table/tables, style, and priority:
+-- table = "primary" limits the rule to one table.
+-- tables = { "dungeon", "delve" } limits it to multiple tables.
+-- style accepts "solid1", "solid3", "dashed", "dotted", or "none".
+-- Higher priority wins when multiple rules target the same grid line.
+
+-- RowBorders draws bottom borders for many rows.
+-- Omit fromRow/toRow to draw separators between every adjacent rendered row.
+-- Use fromRow/toRow to force a bottom border on each row in a range.
+-- Example: RowBorders({ fromRow = 1, toRow = 1, style = "solid3" })
+local function RowBorders(definition)
+    definition = definition or {}
+    local rule = BorderRuleBase(definition, "rowBorders")
+    rule.fromRow = definition.fromRow
+    rule.toRow = definition.toRow
+    AddBorderRule(rule)
+end
+
+-- ColumnBorders draws right borders between every adjacent rendered column.
+-- Example: ColumnBorders({ style = "dashed", priority = 1 })
+local function ColumnBorders(definition)
+    AddBorderRule(BorderRuleBase(definition, "columnBorders"))
+end
+
+-- RowBorder draws one horizontal border across a column range on one row.
+-- edge defaults to "bottom"; use edge = "top" for the row's top border.
+-- Example: RowBorder({ row = 17, fromCol = "b", toCol = "f", style = "solid3" })
+local function RowBorder(definition)
+    definition = definition or {}
+    local rule = BorderRuleBase(definition, "rowBorder")
+    rule.row = definition.row
+    rule.fromCol = definition.fromCol
+    rule.toCol = definition.toCol
+    rule.edge = definition.edge
+    AddBorderRule(rule)
+end
+
+-- ColumnBorder draws one vertical border after a column for a row range.
+-- Omit toRow to extend to the last rendered row in that table.
+-- Example: ColumnBorder({ afterCol = "g", fromRow = 1, style = "solid3" })
+local function ColumnBorder(definition)
+    definition = definition or {}
+    local rule = BorderRuleBase(definition, "columnBorder")
+    rule.afterCol = definition.afterCol
+    rule.fromRow = definition.fromRow
+    rule.toRow = definition.toRow
+    AddBorderRule(rule)
+end
+
+-- BetweenCellsBorder draws the shared edge between two adjacent cells.
+-- The coordinates must be side-by-side or stacked in the same table.
+-- Example: BetweenCellsBorder({ fromCoord = "b17", toCoord = "c17", style = "dashed" })
+local function BetweenCellsBorder(definition)
+    definition = definition or {}
+    local rule = BorderRuleBase(definition, "betweenCellsBorder")
+    rule.fromCoord = definition.fromCoord or definition.from or definition[1]
+    rule.toCoord = definition.toCoord or definition.to or definition[2]
+    AddBorderRule(rule)
 end
 
 NS.DataAPI = {
@@ -314,7 +360,11 @@ NS.DataAPI = {
     Block = Block,
     Cell = Cell,
     MergedCell = MergedCell,
-    BorderRule = BorderRule,
+    RowBorders = RowBorders,
+    ColumnBorders = ColumnBorders,
+    RowBorder = RowBorder,
+    ColumnBorder = ColumnBorder,
+    BetweenCellsBorder = BetweenCellsBorder,
 }
 
 NS.Data = {

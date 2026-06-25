@@ -15,13 +15,15 @@ local BLOCK_BORDER_PRIORITY = 20
 local EXPLICIT_NONE_PRIORITY = 80
 local EXPLICIT_BORDER_PRIORITY = 100
 local EXPLICIT_THICK_BORDER_PRIORITY = 110
+local CELL_BORDER_PRIORITY = 120
+local CELL_BORDER_ORDER = 0
 
 local FRAME_WIDTH = 1180
 local FRAME_HEIGHT = 760
 local PADDING = 14
 local TITLE_HEIGHT = 28
-local HEADER_HEIGHT = 26
-local ROW_HEIGHT = 20
+local HEADER_HEIGHT = 24
+local ROW_HEIGHT = 24
 local SCALE_MIN_PERCENT = 50
 local SCALE_MAX_PERCENT = 200
 local SCALE_STEP_PERCENT = 5
@@ -969,6 +971,56 @@ local function StoreExplicitEdge(parent, cell, edge, rule, order)
     StoreGridLine(parent, GetCellEdgeLine(cell, edge), style)
 end
 
+local function IsFullBorderStyle(value)
+    return type(value) ~= "table" or value.style ~= nil or value.type ~= nil or value[1] ~= nil
+end
+
+local function CellBorderEdgeStyle(border, edge)
+    if border == nil then
+        return nil
+    end
+
+    if IsFullBorderStyle(border) then
+        return border
+    end
+
+    return border[edge]
+end
+
+local function CellBorderEdgePriority(border, edgeStyle)
+    if type(edgeStyle) == "table" and edgeStyle.priority ~= nil then
+        return edgeStyle.priority
+    end
+
+    if type(border) == "table" and border.priority ~= nil then
+        return border.priority
+    end
+
+    return CELL_BORDER_PRIORITY
+end
+
+local function DrawCellBorderOverrides(parent)
+    local edges = { "left", "right", "top", "bottom" }
+    for _, grid in pairs(parent.gridTables or {}) do
+        for _, columns in pairs(grid.rows or {}) do
+            for _, cell in pairs(columns or {}) do
+                local border = cell.cellData and cell.cellData.border
+                if border ~= nil then
+                    for _, edge in ipairs(edges) do
+                        local edgeStyle = CellBorderEdgeStyle(border, edge)
+                        if edgeStyle ~= nil then
+                            StoreExplicitEdge(parent, cell, edge, {
+                                style = edgeStyle,
+                                priority = CellBorderEdgePriority(border, edgeStyle),
+                            }, CELL_BORDER_ORDER)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 local function ShouldApplyRuleToTable(rule, tableKey)
     local requested = rule.tables or rule.table
     if type(requested) == "table" then
@@ -1000,32 +1052,18 @@ local function GridRowBounds(grid)
     return firstRow, lastRow
 end
 
-local function ApplyEveryBorderRule(parent, rule, order)
-    local axis = rule.axis
-    if axis ~= "h" and axis ~= "v" then
-        return
-    end
-
+local function ApplyRowBordersRule(parent, rule, order)
     for tableKey, grid in pairs(parent.gridTables or {}) do
         if ShouldApplyRuleToTable(rule, tableKey) then
             for row, columns in pairs(grid.rows or {}) do
-                if axis == "h" then
-                    local fromRow = tonumber(rule.from)
-                    local toRow = tonumber(rule.to or fromRow)
-                    if not fromRow or (row >= fromRow and row <= toRow) then
-                        local isExplicitRowRule = fromRow and toRow
-                        for column, cell in pairs(columns) do
-                            local nextRow = grid.rows[row + 1]
-                            if isExplicitRowRule or (nextRow and nextRow[column]) then
-                                StoreExplicitEdge(parent, cell, "bottom", rule, order)
-                            end
-                        end
-                    end
-                else
+                local fromRow = tonumber(rule.fromRow)
+                local toRow = tonumber(rule.toRow or fromRow)
+                if not fromRow or (row >= fromRow and row <= toRow) then
+                    local isExplicitRowRule = fromRow and toRow
                     for column, cell in pairs(columns) do
-                        local nextCell = columns[column + 1]
-                        if nextCell then
-                            StoreExplicitEdge(parent, cell, "right", rule, order)
+                        local nextRow = grid.rows[row + 1]
+                        if isExplicitRowRule or (nextRow and nextRow[column]) then
+                            StoreExplicitEdge(parent, cell, "bottom", rule, order)
                         end
                     end
                 end
@@ -1034,15 +1072,25 @@ local function ApplyEveryBorderRule(parent, rule, order)
     end
 end
 
-local function ApplyBetweenBorderRule(parent, rule, order)
-    local tableKey = rule.table or "main"
-    local pair = rule.between
-    if type(pair) ~= "table" then
-        return
+local function ApplyColumnBordersRule(parent, rule, order)
+    for tableKey, grid in pairs(parent.gridTables or {}) do
+        if ShouldApplyRuleToTable(rule, tableKey) then
+            for _, columns in pairs(grid.rows or {}) do
+                for column, cell in pairs(columns) do
+                    local nextCell = columns[column + 1]
+                    if nextCell then
+                        StoreExplicitEdge(parent, cell, "right", rule, order)
+                    end
+                end
+            end
+        end
     end
+end
 
-    local leftColumn, leftRow, leftCoord = ParseCoord(pair[1])
-    local rightColumn, rightRow, rightCoord = ParseCoord(pair[2])
+local function ApplyBetweenCellsBorderRule(parent, rule, order)
+    local tableKey = rule.table or "main"
+    local leftColumn, leftRow, leftCoord = ParseCoord(rule.fromCoord)
+    local rightColumn, rightRow, rightCoord = ParseCoord(rule.toCoord)
     if not leftColumn or not rightColumn or not leftRow or not rightRow then
         return
     end
@@ -1060,16 +1108,16 @@ local function ApplyBetweenBorderRule(parent, rule, order)
     end
 end
 
-local function ApplyVerticalBorderRule(parent, rule, order)
+local function ApplyColumnBorderRule(parent, rule, order)
     local tableKey = rule.table or "main"
-    local column = ColumnIndex(rule.after)
+    local column = ColumnIndex(rule.afterCol)
     if not column or column < 1 then
         return
     end
 
     local grid = parent.gridTables and parent.gridTables[tableKey]
-    local fromRow = tonumber(rule.from)
-    local toRow = tonumber(rule.to)
+    local fromRow = tonumber(rule.fromRow)
+    local toRow = tonumber(rule.toRow)
     if not fromRow or not toRow then
         local firstGridRow, lastGridRow = GridRowBounds(grid)
         fromRow = fromRow or firstGridRow
@@ -1090,7 +1138,7 @@ local function ApplyVerticalBorderRule(parent, rule, order)
     end
 end
 
-local function ApplyHorizontalBorderRule(parent, rule, order)
+local function ApplyRowBorderRule(parent, rule, order)
     local tableKey = rule.table or "main"
     local row = tonumber(rule.row)
     local edge = "bottom"
@@ -1120,14 +1168,16 @@ end
 
 local function DrawExplicitBorderRules(parent)
     for index, rule in ipairs(NS.Data.borderRules or {}) do
-        if rule.each then
-            ApplyEveryBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
-        elseif rule.between then
-            ApplyBetweenBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
-        elseif rule.axis == "v" then
-            ApplyVerticalBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
-        elseif rule.axis == "h" then
-            ApplyHorizontalBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+        if rule.kind == "rowBorders" then
+            ApplyRowBordersRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+        elseif rule.kind == "columnBorders" then
+            ApplyColumnBordersRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+        elseif rule.kind == "betweenCellsBorder" then
+            ApplyBetweenCellsBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+        elseif rule.kind == "columnBorder" then
+            ApplyColumnBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+        elseif rule.kind == "rowBorder" then
+            ApplyRowBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
         end
     end
 end
@@ -1138,6 +1188,7 @@ local function BuildBorderGrid(parent)
 
     ApplyColorBlocks(parent)
     DrawColorBlockBorders(parent)
+    DrawCellBorderOverrides(parent)
     DrawExplicitBorderRules(parent)
 end
 

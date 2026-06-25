@@ -5,7 +5,8 @@ local Table = Data.Table
 local RawBlock = Data.Block
 local Cell = Data.Cell
 local MergedCell = Data.MergedCell
-local RawBorderRule = Data.BorderRule
+local RawRowBorders = Data.RowBorders
+local RawColumnBorder = Data.ColumnBorder
 
 local TABLE_KEY = "primary"
 
@@ -14,9 +15,16 @@ local function Block(definition)
     return RawBlock(definition)
 end
 
-local function BorderRule(definition)
+local function RowBorders(definition)
+    definition = definition or {}
     definition.table = definition.table or TABLE_KEY
-    return RawBorderRule(definition)
+    return RawRowBorders(definition)
+end
+
+local function ColumnBorder(definition)
+    definition = definition or {}
+    definition.table = definition.table or TABLE_KEY
+    return RawColumnBorder(definition)
 end
 
 Table({
@@ -24,7 +32,7 @@ Table({
     name = "Primary item level table",
     x = 354,
     y = 0,
-    displayedRows = 32,
+    displayedRows = 28,
     columns = {
         { col = "a", width = 46, title = "Item level" },
         { col = "b", width = 40, title = "Raid Difficulty / Track" },
@@ -57,38 +65,33 @@ Table({
     },
 })
 
-BorderRule({
-    axis = "horizontal",
+RowBorders({
     fromRow = 1,
     toRow = 1,
-    each = true,
     style = "solid3",
     priority = 100,
 })
 
-BorderRule({
-    axis = "horizontal",
-    each = true,
+RowBorders({
     style = "dashed",
     priority = 1,
 })
 
-local function PrimarySectionBorder(definition)
-    BorderRule({
-        axis = "vertical",
-        afterCol = definition.afterCol,
+local function PrimarySectionBorder(afterCol)
+    ColumnBorder({
+        afterCol = afterCol,
         fromRow = 1,
         style = "solid3",
         priority = 70,
     })
 end
 
-PrimarySectionBorder({ afterCol = "a" })
-PrimarySectionBorder({ afterCol = "g" })
-PrimarySectionBorder({ afterCol = "i" })
-PrimarySectionBorder({ afterCol = "j" })
-PrimarySectionBorder({ afterCol = "m" })
-PrimarySectionBorder({ afterCol = "o" })
+PrimarySectionBorder("a")
+PrimarySectionBorder("g")
+PrimarySectionBorder("i")
+PrimarySectionBorder("j")
+PrimarySectionBorder("m")
+PrimarySectionBorder("o")
 
 Block({
     id = "primary.itemLevels.left",
@@ -185,24 +188,37 @@ Block({
 })
 
 Block({
-    id = "raid.lfr",
+    id = "adventurer",
+    bg = "pink",
+    border = "solid1",
+    innerBorder = "dashed",
+    cells = {
+        Cell({ col = "f", row = 12, text = "1/6", tooltip = { title = "Adventurer Upgrade Track" } }),
+        Cell({ col = "f", row = 13, text = "2/6", tooltip = { title = "Adventurer Upgrade Track" } }),
+        Cell({ col = "f", row = 14, text = "3/6", tooltip = { title = "Adventurer Upgrade Track" } }),
+        Cell({ col = "f", row = 15, text = "4/6", tooltip = { title = "Adventurer Upgrade Track" } }),
+        Cell({ col = "f", row = 16, text = "5/6", tooltip = { title = "Adventurer Upgrade Track" } }),
+        Cell({ col = "f", row = 17, text = "6/6", tooltip = { title = "Adventurer Upgrade Track" } }),
+        MergedCell({ col = "g", row = 12, toRow = 17, text = "Adventurer", vertical = true }),
+        Cell({ col = "b", row = 17, text = "GV", bg = "pink", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "Adventurer Great Vault Reward" } }),
+    },
+})
+
+Block({
+    id = "veteran",
     bg = "blue",
     border = "solid1",
     innerBorder = "dashed",
     cells = {
-        Cell({ col = "b", row = 12, text = "GV", bg = "yellow", tooltip = { title = "Champion Great Vault Reward" } }),
-        MergedCell({ col = "b", row = 13, toRow = 15, text = "LFR", vertical = true }),
-        Cell({ col = "b", row = 13, tooltip = { title = "LFR raid drops" } }),
-        Cell({ col = "b", row = 14, tooltip = { title = "LFR raid drops" } }),
-        Cell({ col = "b", row = 15, tooltip = { title = "LFR raid drops" } }),
-        Cell({ col = "b", row = 17, text = "Rare", font = { size = 10 }, tooltip = { title = "LFR raid drops" } }),
-        Cell({ col = "c", row = 12, text = "1/6", tooltip = { title = "LFR upgrade rank" } }),
-        Cell({ col = "c", row = 13, text = "2/6", tooltip = { title = "LFR upgrade rank" } }),
-        Cell({ col = "c", row = 14, text = "3/6", tooltip = { title = "LFR upgrade rank" } }),
-        Cell({ col = "c", row = 15, text = "4/6", tooltip = { title = "LFR upgrade rank" } }),
-        Cell({ col = "c", row = 16, text = "5/6", tooltip = { title = "LFR upgrade rank" } }),
-        Cell({ col = "c", row = 17, text = "6/6", tooltip = { title = "LFR upgrade rank" } }),
-        MergedCell({ col = "d", row = 12, toRow = 17, text = "Veteran", vertical = true }),
+        MergedCell({ col = "b", row = 18, toRow = 20, text = "LFR", vertical = true, tooltip = { title = "Standard Raid Drops" } }),
+        Cell({ col = "b", row = 20, text = "Rare", font = { size = 10 }, tooltip = { title = "LFR raid drops" } }),
+        Cell({ col = "c", row = 17, text = "1/6", tooltip = { title = "Veteran Upgrade Track" } }),
+        Cell({ col = "c", row = 18, text = "2/6", tooltip = { title = "Veteran Upgrade Track" } }),
+        Cell({ col = "c", row = 19, text = "3/6", tooltip = { title = "Veteran Upgrade Track" } }),
+        Cell({ col = "c", row = 20, text = "4/6", tooltip = { title = "Veteran Upgrade Track" } }),
+        Cell({ col = "c", row = 21, text = "5/6", tooltip = { title = "Veteran Upgrade Track" } }),
+        Cell({ col = "c", row = 22, text = "6/6", tooltip = { title = "Veteran Upgrade Track" } }),
+        MergedCell({ col = "d", row = 17, toRow = 22, text = "Veteran", vertical = true }),
     },
 })
 
