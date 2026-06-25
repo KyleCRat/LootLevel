@@ -230,8 +230,6 @@ local VALID_FONT_FLAGS = {
     [""] = true,
     OUTLINE = true,
     THICKOUTLINE = true,
-    MONOCHROME = true,
-    SLUG = true,
     OUTLINESLUG = true,
     MONOCHROMEOUTLINE = true,
     MONOCHROMETHICKOUTLINE = true,
@@ -261,6 +259,15 @@ local function NormalizeFontOutline(value)
     if outline == "thick" or outline == "thickoutline" then
         return "THICKOUTLINE"
     end
+    if outline == "slug" or outline == "outlineslug" then
+        return "OUTLINESLUG"
+    end
+    if outline == "mono" or outline == "monochrome" or outline == "monochromeoutline" then
+        return "MONOCHROMEOUTLINE"
+    end
+    if outline == "monothick" or outline == "monochromethick" or outline == "monochromethickoutline" then
+        return "MONOCHROMETHICKOUTLINE"
+    end
 
     return ""
 end
@@ -283,6 +290,10 @@ local function FontFlags(font)
     local monochrome = font.monochrome == true
     local slug = font.slug == true
 
+    if outline == "OUTLINESLUG" or outline == "MONOCHROMEOUTLINE" or outline == "MONOCHROMETHICKOUTLINE" then
+        return outline
+    end
+
     if monochrome then
         if outline == "THICKOUTLINE" then
             return "MONOCHROMETHICKOUTLINE"
@@ -290,7 +301,7 @@ local function FontFlags(font)
         if outline == "OUTLINE" then
             return "MONOCHROMEOUTLINE"
         end
-        return "MONOCHROME"
+        return ""
     end
 
     if outline == "THICKOUTLINE" then
@@ -300,7 +311,7 @@ local function FontFlags(font)
         return slug and "OUTLINESLUG" or "OUTLINE"
     end
 
-    return slug and "SLUG" or ""
+    return ""
 end
 
 local function FontSize(font, fallbackSize)
