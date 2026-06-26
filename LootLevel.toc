@@ -15,4 +15,8 @@ Data\Dungeon.lua
 Data\Delve.lua
 Data\Primary.lua
 UI.lua
+UI\Footer.lua
+UI\ScaleButton.lua
+UI\LayerSelector.lua
+UI\MainFrame.lua
 Commands.lua

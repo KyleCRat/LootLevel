@@ -28,17 +28,6 @@ local SCALE_MIN_PERCENT = 50
 local SCALE_MAX_PERCENT = 200
 local SCALE_STEP_PERCENT = 5
 local SCALE_DEFAULT_PERCENT = 100
-local LayerSelector = {
-    topOffset = -42,
-    x = -1,
-    subX = 8,
-    width = 42,
-    height = 28,
-    subWidth = 34,
-    subHeight = 24,
-    gap = 3,
-    groupGap = 7,
-}
 
 local MERGED_VERTICAL_LABEL_NUDGE_X = -6
 local MERGED_VERTICAL_LABEL_NUDGE_Y = 7
@@ -189,6 +178,25 @@ local function RegisterLayoutRecord(record)
     NS.layoutRecords = NS.layoutRecords or {}
     NS.layoutRecords[#NS.layoutRecords + 1] = record
     ApplyLayoutRecord(record)
+end
+
+local function RemoveLayoutRecordsForOwner(owner)
+    if not owner or not NS.layoutRecords then
+        return
+    end
+
+    local writeIndex = 1
+    for readIndex = 1, #NS.layoutRecords do
+        local record = NS.layoutRecords[readIndex]
+        if record and record.owner ~= owner then
+            NS.layoutRecords[writeIndex] = record
+            writeIndex = writeIndex + 1
+        end
+    end
+
+    for index = writeIndex, #NS.layoutRecords do
+        NS.layoutRecords[index] = nil
+    end
 end
 
 local function RegisterFontRecord(record)
@@ -397,17 +405,50 @@ local function ApplyTexturePixelSnapping(texture)
     end
 end
 
+local function AcquireGridLineTexture(overlay)
+    overlay.lines = overlay.lines or {}
+    overlay.linePool = overlay.linePool or {}
+
+    local texture = overlay.linePool[#overlay.linePool]
+    if texture then
+        overlay.linePool[#overlay.linePool] = nil
+    else
+        texture = overlay:CreateTexture(nil, "ARTWORK")
+        ApplyTexturePixelSnapping(texture)
+    end
+
+    texture:Show()
+    overlay.lines[#overlay.lines + 1] = texture
+    return texture
+end
+
+local function ReleaseGridOverlayLines(overlay)
+    if not overlay then
+        return
+    end
+
+    RemoveLayoutRecordsForOwner(overlay)
+    overlay.linePool = overlay.linePool or {}
+
+    for _, texture in ipairs(overlay.lines or {}) do
+        texture:Hide()
+        texture:ClearAllPoints()
+        overlay.linePool[#overlay.linePool + 1] = texture
+    end
+
+    overlay.lines = {}
+end
+
 local function RegisterGridLineTexture(overlay, line)
-    local texture = overlay:CreateTexture(nil, "ARTWORK")
-    ApplyTexturePixelSnapping(texture)
+    local texture = AcquireGridLineTexture(overlay)
     texture:SetColorTexture(GRID_COLOR[1], GRID_COLOR[2], GRID_COLOR[3], line.alpha or GRID_COLOR[4])
     RegisterLayoutRecord({
         kind = "gridline",
         region = texture,
+        owner = overlay,
         relativeTo = overlay,
         line = line,
     })
-    overlay.lines[#overlay.lines + 1] = texture
 end
 
 local function RegisterPatternedGridLine(overlay, line, segmentLength, segmentGap)
@@ -1648,8 +1689,8 @@ local function ResetGridParentRendering(parent)
     parent.gridLineBlocks = {}
 
     if parent.gridOverlay then
+        ReleaseGridOverlayLines(parent.gridOverlay)
         parent.gridOverlay:Hide()
-        parent.gridOverlay = nil
     end
 
     ForEachRegisteredGridCell(parent, function(cell)
@@ -1668,24 +1709,28 @@ local function ResetGridParentRendering(parent)
 end
 
 local function DrawGridLines(parent)
-    if parent.gridOverlay then
+    if parent.gridOverlay and parent.gridOverlay:IsShown() then
         return
     end
 
     RegisterGridParent(parent)
     BuildBorderGrid(parent)
 
-    local overlay = CreateFrame("Frame", nil, parent)
+    local overlay = parent.gridOverlay
+    if not overlay then
+        overlay = CreateFrame("Frame", nil, parent)
+        overlay:EnableMouse(false)
+        parent.gridOverlay = overlay
+    end
+
+    ReleaseGridOverlayLines(overlay)
     overlay:SetAllPoints(parent)
     overlay:SetFrameLevel(parent:GetFrameLevel() + 100)
-    overlay:EnableMouse(false)
-    overlay.lines = {}
+    overlay:Show()
 
     for _, line in pairs(parent.gridLines) do
         RegisterStyledGridLine(overlay, line)
     end
-
-    parent.gridOverlay = overlay
 end
 
 local function DrawTableBodyViewportBorder(scroll, tableDefinition, width, visibleRows)
@@ -1825,6 +1870,33 @@ local function CreateText(parent, text, font, colorName, justifyH, justifyV, bol
     end
     return fs
 end
+
+NS.UI = NS.UI or {}
+NS.UI.FrameBackdrop = FRAME_BACKDROP
+NS.UI.Metrics = {
+    frameWidth = FRAME_WIDTH,
+    frameHeight = FRAME_HEIGHT,
+    padding = PADDING,
+    titleHeight = TITLE_HEIGHT,
+}
+NS.UI.Scale = {
+    minPercent = SCALE_MIN_PERCENT,
+    maxPercent = SCALE_MAX_PERCENT,
+    stepPercent = SCALE_STEP_PERCENT,
+}
+NS.UI.Color = Color
+NS.UI.CreateText = CreateText
+NS.UI.SetLayoutBox = SetLayoutBox
+NS.UI.SetLayoutSize = SetLayoutSize
+NS.UI.SetLayoutPoints = SetLayoutPoints
+NS.UI.ApplyTexturePixelSnapping = ApplyTexturePixelSnapping
+NS.UI.GetScalePercent = GetScalePercent
+NS.UI.FormatScalePercent = FormatScalePercent
+NS.UI.NormalizeScalePercent = NormalizeScalePercent
+NS.UI.GetPixelRoot = GetPixelRoot
+NS.UI.SnapFramePosition = SnapFramePosition
+NS.UI.LayerDisplayName = LayerDisplayName
+NS.UI.LayerSetDisplayName = LayerSetDisplayName
 
 local function BuildTooltipLines(cellData, fallbackLabel)
     local tooltip = cellData.tooltip
@@ -2501,272 +2573,8 @@ local function BuildRegisteredTables(parent)
     end
 end
 
-local function LayerFooterText(layer, side)
-    if not layer then
-        return nil
-    end
-
-    if type(layer.footer) == "table" and layer.footer[side] ~= nil then
-        return layer.footer[side]
-    end
-
-    if side == "right" then
-        return layer.footerRight
-    end
-
-    if side == "left" then
-        return layer.footerLeft
-    end
-
-    return nil
-end
-
-local function ActiveFooterRightText()
-    local layerSetKey = GetActiveLayerSetKey()
-    local layerSet = LayerSetData(layerSetKey)
-    local activeLayer = LayerData(GetActiveLayerKey(layerSetKey))
-    return LayerFooterText(activeLayer, "right") or LayerFooterText(layerSet, "right") or NS.Data.footerRight or ""
-end
-
-local function RefreshFooterText()
-    if NS.footerRightText then
-        NS.footerRightText:SetText(ActiveFooterRightText())
-    end
-end
-
-function LayerSelector.Abbreviate(text)
-    text = tostring(text or ""):gsub("%s+", "")
-    if text == "" then
-        return "?"
-    end
-
-    return strupper(text:sub(1, 3))
-end
-
-function LayerSelector.LayerSetButtonText(layerSet)
-    return layerSet and (layerSet.buttonText or layerSet.shortName or LayerSelector.Abbreviate(layerSet.name or layerSet.key))
-        or "?"
-end
-
-function LayerSelector.LayerButtonText(layer)
-    if not layer then
-        return "?"
-    end
-
-    if layer.buttonText or layer.shortName then
-        return layer.buttonText or layer.shortName
-    end
-
-    local season = tostring(layer.name or ""):match("[Ss]eason%s*(%d+)")
-    if season then
-        return "S" .. season
-    end
-
-    return LayerSelector.Abbreviate(layer.name or layer.key)
-end
-
-function LayerSelector.ApplyButtonState(button, selected, enabled)
-    if not button then
-        return
-    end
-
-    enabled = enabled ~= false
-    button:SetAlpha(enabled and 1 or 0.55)
-
-    if button.SetBackdrop then
-        if selected then
-            button:SetBackdropColor(0.10, 0.42, 0.32, 0.98)
-            button:SetBackdropBorderColor(0.26, 0.86, 0.60, 1)
-        else
-            button:SetBackdropColor(0.13, 0.13, 0.13, 0.96)
-            button:SetBackdropBorderColor(0, 0, 0, 1)
-        end
-    end
-
-    if button.label then
-        if selected or enabled then
-            button.label:SetTextColor(Color("white"))
-        else
-            button.label:SetTextColor(Color("muted"))
-        end
-    end
-end
-
-function LayerSelector.Refresh()
-    local activeLayerSet = GetActiveLayerSetKey()
-
-    for _, record in ipairs(NS.layerSetButtons or {}) do
-        LayerSelector.ApplyButtonState(record.button, record.layerSetKey == activeLayerSet, true)
-    end
-
-    for _, record in ipairs(NS.layerButtons or {}) do
-        local layerSetActive = record.layerSetKey == activeLayerSet
-        local activeLayer = GetActiveLayerKey(record.layerSetKey)
-        LayerSelector.ApplyButtonState(record.button, layerSetActive and record.layerKey == activeLayer, layerSetActive)
-    end
-end
-
-function LayerSelector.ShowTooltip(owner, title, line)
-    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
-    GameTooltip:SetText(title or "", 1, 1, 1)
-    if line then
-        GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
-    end
-    GameTooltip:Show()
-end
-
-function LayerSelector.CreateButton(parent, text, width, height)
-    local button = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
-    SetLayoutSize(button, width, height)
-
-    if button.SetBackdrop then
-        button:SetBackdrop(FRAME_BACKDROP)
-        button:SetBackdropColor(0.13, 0.13, 0.13, 0.96)
-        button:SetBackdropBorderColor(0, 0, 0, 1)
-    end
-
-    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-    ApplyTexturePixelSnapping(highlight)
-    highlight:SetAllPoints()
-    highlight:SetColorTexture(1, 1, 1, 0.16)
-
-    local label = CreateText(button, text, { size = 10 }, "white", "CENTER", "MIDDLE", true)
-    SetLayoutBox(label, "CENTER", button, "CENTER", 0, 0, width - 4, height - 4)
-    button.label = label
-
-    return button
-end
-
-function LayerSelector.CreateButtons(parent)
-    NS.layerSetButtons = {}
-    NS.layerButtons = {}
-
-    local y = LayerSelector.topOffset
-    for _, layerSet in ipairs((NS.Data and NS.Data.layerSetOrder) or {}) do
-        local layerSetKey = layerSet.key or layerSet.id
-        local setButton = LayerSelector.CreateButton(parent, LayerSelector.LayerSetButtonText(layerSet), LayerSelector.width, LayerSelector.height)
-        SetLayoutBox(setButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.x, y, LayerSelector.width, LayerSelector.height)
-        setButton:SetScript("OnClick", function()
-            NS:SetActiveLayerSet(layerSetKey, true)
-        end)
-        setButton:SetScript("OnEnter", function(self)
-            LayerSelector.ShowTooltip(self, LayerSetDisplayName(layerSetKey), "Select expansion.")
-        end)
-        setButton:SetScript("OnLeave", function()
-            GameTooltip:Hide()
-        end)
-
-        NS.layerSetButtons[#NS.layerSetButtons + 1] = {
-            button = setButton,
-            layerSetKey = layerSetKey,
-        }
-
-        y = y - LayerSelector.height - LayerSelector.gap
-        for _, layer in ipairs(layerSet.layerOrder or {}) do
-            local layerKey = layer.key or layer.id
-            local layerButton = LayerSelector.CreateButton(parent, LayerSelector.LayerButtonText(layer), LayerSelector.subWidth, LayerSelector.subHeight)
-            SetLayoutBox(layerButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.subX, y, LayerSelector.subWidth, LayerSelector.subHeight)
-            layerButton:SetScript("OnClick", function()
-                NS:SetActiveLayer(layerKey, true)
-            end)
-            layerButton:SetScript("OnEnter", function(self)
-                LayerSelector.ShowTooltip(self, LayerDisplayName(layerKey), LayerSetDisplayName(layerSetKey))
-            end)
-            layerButton:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-
-            NS.layerButtons[#NS.layerButtons + 1] = {
-                button = layerButton,
-                layerSetKey = layerSetKey,
-                layerKey = layerKey,
-            }
-
-            y = y - LayerSelector.subHeight - LayerSelector.gap
-        end
-
-        y = y - LayerSelector.groupGap
-    end
-
-    LayerSelector.Refresh()
-end
-
-local function BuildFooter(parent)
-    local footer = CreateFrame("Frame", nil, parent)
-    SetLayoutPoints(footer, {
-        { point = "BOTTOMLEFT", relativeTo = parent, relativePoint = "BOTTOMLEFT", x = PADDING, y = 8 },
-        { point = "BOTTOMRIGHT", relativeTo = parent, relativePoint = "BOTTOMRIGHT", x = -PADDING, y = 8 },
-    }, nil, 22)
-
-    local left = CreateText(footer, NS.Data.footerLeft, { size = 12 }, "white", "LEFT", "MIDDLE", false)
-    SetLayoutBox(left, "LEFT", footer, "LEFT", 0, 0, 720, 20)
-
-    local right = CreateText(footer, ActiveFooterRightText(), { size = 12 }, "white", "RIGHT", "MIDDLE", false)
-    SetLayoutBox(right, "RIGHT", footer, "RIGHT", 0, 0, 410, 20)
-    NS.footerRightText = right
-end
-
-local function CreateScaleButton(parent)
-    local button = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
-    SetLayoutBox(button, "TOPRIGHT", parent, "TOPRIGHT", -38, -7, 46, 20)
-
-    if button.SetBackdrop then
-        button:SetBackdrop(FRAME_BACKDROP)
-        button:SetBackdropColor(0.18, 0.18, 0.18, 0.95)
-        button:SetBackdropBorderColor(0, 0, 0, 1)
-    end
-
-    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
-    ApplyTexturePixelSnapping(highlight)
-    highlight:SetAllPoints()
-    highlight:SetColorTexture(1, 1, 1, 0.18)
-
-    local label = CreateText(button, FormatScalePercent(GetScalePercent()), { size = 10 }, "white", "CENTER", "MIDDLE", true)
-    SetLayoutBox(label, "CENTER", button, "CENTER", 0, 0, 42, 16)
-    NS.scaleButtonText = label
-    NS.scaleButton = button
-
-    button:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Scale", 1, 1, 1)
-        GameTooltip:AddLine("Drag to resize the table in pixel-snapped steps.", 0.85, 0.85, 0.85, true)
-        GameTooltip:Show()
-    end)
-
-    button:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-    local slider = LibStub and LibStub("LibPopupSlider-1.0", true)
-    if slider then
-        local popup = slider:Create(button, {
-            minValue = SCALE_MIN_PERCENT,
-            maxValue = SCALE_MAX_PERCENT,
-            step = SCALE_STEP_PERCENT,
-            label = "Scale",
-            formatValue = FormatScalePercent,
-            sliderHeight = 130,
-            popupWidth = 48,
-            thumbSize = 18,
-            markerSize = 6,
-            font = NS.FONT_BOLD_PATH,
-            fontFlags = "",
-            fontSize = 10,
-            valueFitText = "200%",
-            onValueChanged = function(value)
-                NS:SetFrameScalePercent(value)
-            end,
-        })
-        popup:SetValue(GetScalePercent(), true)
-        NS.scalePopup = popup
-    else
-        button:SetScript("OnMouseDown", function()
-            NS:Print("LibPopupSlider-1.0 is not loaded.")
-        end)
-    end
-
-    return button
-end
+NS.UI.BuildRegisteredTables = BuildRegisteredTables
+NS.UI.DrawGridLines = DrawGridLines
 
 function NS:HandleCellClick(cellData, button)
     local label = TooltipTitle(cellData) or cellData.colTitle or "cell"
@@ -2790,8 +2598,12 @@ function NS:RefreshLayerRendering()
         ResetGridParentRendering(parent)
         DrawGridLines(parent)
     end
-    RefreshFooterText()
-    LayerSelector.Refresh()
+    if NS.UI.RefreshFooterText then
+        NS.UI.RefreshFooterText()
+    end
+    if NS.UI.LayerSelector and NS.UI.LayerSelector.Refresh then
+        NS.UI.LayerSelector.Refresh()
+    end
 end
 
 function NS:SetActiveLayerSet(layerSetKey, silent)
@@ -2870,128 +2682,4 @@ function NS:SetFrameScalePercent(value, silent)
             self:SaveFramePosition(self.frame)
         end
     end
-end
-
-function NS:CreateMainFrame()
-    if self.frame then
-        return self.frame
-    end
-
-    local pixelRoot = GetPixelRoot()
-    local frame = CreateFrame("Frame", "LootLevelFrame", pixelRoot, BackdropTemplateMixin and "BackdropTemplate")
-    frame:SetScale(1)
-    self.db.scalePercent = NormalizeScalePercent(self.db.scalePercent)
-    self.layoutRecords = {}
-    self.layoutFonts = {}
-    self.tableBodyScrolls = {}
-    self.gridParents = {}
-    SetLayoutSize(frame, FRAME_WIDTH, FRAME_HEIGHT)
-    frame:SetFrameStrata("HIGH")
-    frame:SetToplevel(true)
-    frame:SetMovable(true)
-    frame:SetClampedToScreen(true)
-    frame:EnableMouse(true)
-    frame:RegisterForDrag("LeftButton")
-    frame.cells = {}
-
-    if frame.SetBackdrop then
-        frame:SetBackdrop(FRAME_BACKDROP)
-        frame:SetBackdropColor(Color("frame"))
-        frame:SetBackdropBorderColor(0.02, 0.02, 0.02, 1)
-    end
-
-    self:RestoreFramePosition(frame)
-    frame:Hide()
-
-    frame:SetScript("OnDragStart", function(selfFrame)
-        if not NS.db or not NS.db.locked then
-            selfFrame:StartMoving()
-        end
-    end)
-
-    frame:SetScript("OnDragStop", function(selfFrame)
-        selfFrame:StopMovingOrSizing()
-        SnapFramePosition(selfFrame)
-        NS:SaveFramePosition(selfFrame)
-    end)
-
-    frame:SetScript("OnShow", function()
-        if NS.db then
-            NS.db.shown = true
-        end
-    end)
-
-    frame:SetScript("OnHide", function()
-        if NS.db then
-            NS.db.shown = false
-        end
-    end)
-
-    local title = CreateText(frame, "LootLevel", { size = 15 }, "white", "LEFT", "MIDDLE", true)
-    SetLayoutBox(title, "TOPLEFT", frame, "TOPLEFT", PADDING, -6, 240, TITLE_HEIGHT - 4)
-
-    local version = CreateText(frame, self.version or "", { size = 11 }, "muted", "RIGHT", "MIDDLE", false)
-    SetLayoutBox(version, "TOPRIGHT", frame, "TOPRIGHT", -92, -6, 160, TITLE_HEIGHT - 4)
-
-    local close = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
-    SetLayoutBox(close, "TOPRIGHT", frame, "TOPRIGHT", -4, -4, 28, 28)
-    close:SetScript("OnClick", function()
-        frame:Hide()
-    end)
-
-    CreateScaleButton(frame)
-    LayerSelector.CreateButtons(frame)
-
-    local content = CreateFrame("Frame", nil, frame)
-    SetLayoutBox(content, "TOPLEFT", frame, "TOPLEFT", PADDING, -(TITLE_HEIGHT + 8), FRAME_WIDTH - (PADDING * 2), FRAME_HEIGHT - TITLE_HEIGHT - 42)
-    content.cells = frame.cells
-
-    BuildRegisteredTables(content)
-    DrawGridLines(content)
-    BuildFooter(frame)
-
-    self.frame = frame
-    table.insert(UISpecialFrames, "LootLevelFrame")
-
-    return frame
-end
-
-function NS:ShowMainFrame()
-    if not self.frame then
-        self:CreateMainFrame()
-    end
-    self.frame:Show()
-end
-
-function NS:HideMainFrame()
-    if self.frame then
-        self.frame:Hide()
-    end
-end
-
-function NS:ToggleMainFrame()
-    if not self.frame then
-        self:CreateMainFrame()
-    end
-
-    if self.frame:IsShown() then
-        self.frame:Hide()
-    else
-        self.frame:Show()
-    end
-end
-
-function NS:ResetMainFramePosition()
-    if not self.frame then
-        self:CreateMainFrame()
-    end
-
-    self.db.position = {
-        point = "CENTER",
-        relPoint = "CENTER",
-        x = 0,
-        y = 0,
-    }
-    self:RestoreFramePosition(self.frame)
-    self:Print("Frame position reset.")
 end
