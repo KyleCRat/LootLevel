@@ -38,7 +38,8 @@ Table({
     key = TABLE_KEY,
     name = "Primary item level table",
     layout = "midnight",
-    displayedRows = 28,
+    displayedRows = 27,
+    bodyScrollGroup = "midnight.raidActivity",
     columns = {
         { col = "a", width = 48, title = "Prey" },
         { col = "b", width = 48, title = "Delve" },

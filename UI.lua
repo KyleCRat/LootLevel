@@ -1009,25 +1009,35 @@ local function MaxBlockPriority(block, neighborBlock)
     return math.max(block and block.priority or 0, neighborBlock and neighborBlock.priority or 0)
 end
 
-local function GetRelatedBlockInnerBorderStyle(block, neighborBlock)
+local function GetRelatedBlockInnerBorderStyle(block, neighborBlock, edge)
     if not block or not neighborBlock then
         return nil, false
     end
 
+    local isRowEdge = edge == "top" or edge == "bottom"
+    local blockInnerStyle = isRowEdge and block.innerRowBorderStyle or block.innerColBorderStyle
+    local neighborInnerStyle = isRowEdge and neighborBlock.innerRowBorderStyle or neighborBlock.innerColBorderStyle
+    local blockParentStyle = isRowEdge and block.parentInnerRowBorderStyle or block.parentInnerColBorderStyle
+    local neighborParentStyle = isRowEdge and neighborBlock.parentInnerRowBorderStyle or neighborBlock.parentInnerColBorderStyle
+    blockInnerStyle = blockInnerStyle or block.innerBorderStyle
+    neighborInnerStyle = neighborInnerStyle or neighborBlock.innerBorderStyle
+    blockParentStyle = blockParentStyle or block.parentInnerBorderStyle
+    neighborParentStyle = neighborParentStyle or neighborBlock.parentInnerBorderStyle
+
     if block.id == neighborBlock.id then
-        return block.innerBorderStyle, true
+        return blockInnerStyle, true
     end
 
     if block.parentBlockId and block.parentBlockId == neighborBlock.id then
-        return block.parentInnerBorderStyle or neighborBlock.innerBorderStyle, true
+        return blockParentStyle or neighborInnerStyle, true
     end
 
     if neighborBlock.parentBlockId and neighborBlock.parentBlockId == block.id then
-        return neighborBlock.parentInnerBorderStyle or block.innerBorderStyle, true
+        return neighborParentStyle or blockInnerStyle, true
     end
 
     if block.parentBlockId and neighborBlock.parentBlockId and block.parentBlockId == neighborBlock.parentBlockId then
-        return block.parentInnerBorderStyle or neighborBlock.parentInnerBorderStyle, true
+        return blockParentStyle or neighborParentStyle, true
     end
 
     return nil, false
@@ -1340,12 +1350,28 @@ local function EnsureColorBlock(parent, blockData, order)
             existing.innerBorder = blockData.innerBorder
             existing.innerBorderStyle = CopyBorderStyle(blockData.innerBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
         end
+        if blockData.innerRowBorder ~= nil then
+            existing.innerRowBorder = blockData.innerRowBorder
+            existing.innerRowBorderStyle = CopyBorderStyle(blockData.innerRowBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+        end
+        if blockData.innerColBorder ~= nil then
+            existing.innerColBorder = blockData.innerColBorder
+            existing.innerColBorderStyle = CopyBorderStyle(blockData.innerColBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+        end
         if blockData.parentBlockId ~= nil then
             existing.parentBlockId = blockData.parentBlockId
         end
         if blockData.parentInnerBorder ~= nil then
             existing.parentInnerBorder = blockData.parentInnerBorder
             existing.parentInnerBorderStyle = CopyBorderStyle(blockData.parentInnerBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+        end
+        if blockData.parentInnerRowBorder ~= nil then
+            existing.parentInnerRowBorder = blockData.parentInnerRowBorder
+            existing.parentInnerRowBorderStyle = CopyBorderStyle(blockData.parentInnerRowBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+        end
+        if blockData.parentInnerColBorder ~= nil then
+            existing.parentInnerColBorder = blockData.parentInnerColBorder
+            existing.parentInnerColBorderStyle = CopyBorderStyle(blockData.parentInnerColBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
         end
         if blockData.layer ~= nil then
             existing.layer = blockData.layer
@@ -1360,13 +1386,21 @@ local function EnsureColorBlock(parent, blockData, order)
         bg = blockData.bg,
         border = blockData.border or "solid1",
         innerBorder = blockData.innerBorder,
+        innerRowBorder = blockData.innerRowBorder,
+        innerColBorder = blockData.innerColBorder,
         parentInnerBorder = blockData.parentInnerBorder,
+        parentInnerRowBorder = blockData.parentInnerRowBorder,
+        parentInnerColBorder = blockData.parentInnerColBorder,
         priority = blockData.priority or 0,
         order = order or 0,
     }
     block.borderStyle = CopyBorderStyle(block.border, BLOCK_BORDER_PRIORITY + block.priority, block.order)
     block.innerBorderStyle = CopyBorderStyle(block.innerBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
+    block.innerRowBorderStyle = CopyBorderStyle(block.innerRowBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
+    block.innerColBorderStyle = CopyBorderStyle(block.innerColBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
     block.parentInnerBorderStyle = CopyBorderStyle(block.parentInnerBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
+    block.parentInnerRowBorderStyle = CopyBorderStyle(block.parentInnerRowBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
+    block.parentInnerColBorderStyle = CopyBorderStyle(block.parentInnerColBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
     parent.colorBlocksById[id] = block
     return block
 end
@@ -1560,7 +1594,7 @@ local function DrawColorBlockBorders(parent)
             for _, edge in ipairs(edges) do
                 local neighbor = GetNeighborCell(parent, cell, edge)
                 local neighborBlock = neighbor and neighbor.coordKey and parent.blockByCoord[neighbor.coordKey]
-                local innerBorderStyle, isRelatedBlock = GetRelatedBlockInnerBorderStyle(block, neighborBlock)
+                local innerBorderStyle, isRelatedBlock = GetRelatedBlockInnerBorderStyle(block, neighborBlock, edge)
                 if isRelatedBlock then
                     if innerBorderStyle then
                         StoreGridLine(parent, GetCellEdgeLine(cell, edge), RelatedBlockBorderStyle(block, neighborBlock, innerBorderStyle))
@@ -2380,6 +2414,12 @@ local function ScrollTableBodyByWheel(scroll, delta)
     local amount = ScalePixel(ROW_HEIGHT * 3)
     local nextOffset = (scroll:GetVerticalScroll() or 0) - ((delta or 0) * amount)
     scroll:SetVerticalScroll(Clamp(nextOffset, 0, scroll:GetVerticalScrollRange() or 0))
+    if scroll.bodyScrollGroup and not scroll.syncingBodyScroll then
+        local onVerticalScroll = scroll:GetScript("OnVerticalScroll")
+        if onVerticalScroll then
+            onVerticalScroll(scroll, scroll:GetVerticalScroll() or 0)
+        end
+    end
 end
 
 local function AttachTableBodyWheel(frame, scroll)
@@ -3011,7 +3051,7 @@ local function ClampScrollFrame(scroll)
     scroll:SetVerticalScroll(Clamp(current, 0, range))
 end
 
-local function CreateTableBodyScroll(parent, x, y, width, visibleRows, totalRows)
+local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visibleRows, totalRows)
     local visibleHeight = math.max(1, visibleRows * ROW_HEIGHT)
     local contentHeight = math.max(visibleHeight, totalRows * ROW_HEIGHT)
     local scroll = CreateFrame("ScrollFrame", nil, parent)
@@ -3036,6 +3076,41 @@ local function CreateTableBodyScroll(parent, x, y, width, visibleRows, totalRows
 
     NS.tableBodyScrolls = NS.tableBodyScrolls or {}
     NS.tableBodyScrolls[#NS.tableBodyScrolls + 1] = scroll
+    if canScroll and tableDefinition then
+        local bodyScrollGroup = tableDefinition.bodyScrollGroup or tableDefinition.scrollGroup
+        if bodyScrollGroup then
+            scroll.bodyScrollGroup = bodyScrollGroup
+            NS.tableBodyScrollGroups = NS.tableBodyScrollGroups or {}
+            NS.tableBodyScrollGroups[bodyScrollGroup] = NS.tableBodyScrollGroups[bodyScrollGroup] or {}
+            local groupScrolls = NS.tableBodyScrollGroups[bodyScrollGroup]
+            groupScrolls[#groupScrolls + 1] = scroll
+
+            scroll:SetScript("OnVerticalScroll", function(self, offset)
+                if self.syncingBodyScroll then
+                    return
+                end
+
+                offset = Clamp(offset or self:GetVerticalScroll() or 0, 0, self:GetVerticalScrollRange() or 0)
+                NS.tableBodyScrollOffsets = NS.tableBodyScrollOffsets or {}
+                NS.tableBodyScrollOffsets[bodyScrollGroup] = offset
+
+                for _, syncedScroll in ipairs(NS.tableBodyScrollGroups[bodyScrollGroup] or {}) do
+                    if syncedScroll ~= self then
+                        syncedScroll.syncingBodyScroll = true
+                        syncedScroll:SetVerticalScroll(Clamp(offset, 0, syncedScroll:GetVerticalScrollRange() or 0))
+                        syncedScroll.syncingBodyScroll = nil
+                    end
+                end
+            end)
+
+            local savedOffset = NS.tableBodyScrollOffsets and NS.tableBodyScrollOffsets[bodyScrollGroup]
+            if savedOffset then
+                scroll.syncingBodyScroll = true
+                scroll:SetVerticalScroll(Clamp(savedOffset, 0, scroll:GetVerticalScrollRange() or 0))
+                scroll.syncingBodyScroll = nil
+            end
+        end
+    end
 
     return scroll, child
 end
@@ -3072,7 +3147,7 @@ local function BuildDataTable(parent, tableDefinition, layout)
 
     local visibleRows = layout and layout.visibleRows or DisplayedBodyRows(tableDefinition, totalRows)
     local spanMap = BuildTableSpanMap(tableDefinition, rowLayout)
-    local bodyScroll, bodyContent = CreateTableBodyScroll(parent, x, y + HEADER_HEIGHT, TableWidth(tableDefinition), visibleRows, totalRows)
+    local bodyScroll, bodyContent = CreateTableBodyScroll(parent, tableDefinition, x, y + HEADER_HEIGHT, TableWidth(tableDefinition), visibleRows, totalRows)
     BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0, rowLayout, spanMap)
     DrawGridLines(bodyContent)
     DrawTableBodyViewportBorder(bodyScroll, tableDefinition, TableWidth(tableDefinition), visibleRows)

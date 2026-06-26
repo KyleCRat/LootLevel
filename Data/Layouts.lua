@@ -28,7 +28,7 @@ Layout({
         end
 
         if raid and dungeon then
-            raid.x = dungeon.x + dungeon.width + tableGap
+            raid.x = dungeon.x + dungeon.width + (tableGap / 2)
             raid.y = dungeon.y
             layouts[MIDNIGHT_TABLES.raid] = raid
         elseif raid then

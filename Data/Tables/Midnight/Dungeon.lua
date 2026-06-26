@@ -33,12 +33,12 @@ Table({
     layout = "midnight",
     displayedRows = 15,
     columns = {
-        { col = "a", width = 60, title = "Level", bg = "light", bold = true },
-        { col = "b", width = 44, title = "Loot", bg = "blank" },
-        { col = "c", width = 44, title = "Loot upgrade", bg = "blank" },
-        { col = "d", width = 44, title = "Great Vault", bg = "blank" },
-        { col = "e", width = 44, title = "Great Vault upgrade", bg = "blank" },
-        { col = "f", width = 60, title = "Crest", bg = "blank" },
+        { col = "a", width = 44, title = "Level", bg = "light", bold = true },
+        { col = "b", width = 36, title = "Loot", bg = "blank" },
+        { col = "c", width = 36, title = "Loot upgrade", bg = "blank" },
+        { col = "d", width = 36, title = "Great Vault", bg = "blank" },
+        { col = "e", width = 36, title = "Great Vault upgrade", bg = "blank" },
+        { col = "f", width = 44, title = "Crest", bg = "blank" },
         { col = "g", width = 26, title = "Section", bg = "blank" },
     },
     headers = {

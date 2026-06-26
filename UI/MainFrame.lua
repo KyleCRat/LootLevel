@@ -133,6 +133,8 @@ function NS:CreateMainFrame()
     self.layoutRecords = {}
     self.layoutFonts = {}
     self.tableBodyScrolls = {}
+    self.tableBodyScrollGroups = {}
+    self.tableBodyScrollOffsets = {}
     self.gridParents = {}
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)

@@ -39,6 +39,7 @@ Table({
     name = "Primary item level table",
     layout = "midnight",
     displayedRows = 27,
+    bodyScrollGroup = "midnight.raidActivity",
     columns = {
         { col = "a", width = 40, title = "Item level" },
         { col = "b", width = 36, title = "Raid Difficulty / Track" },
