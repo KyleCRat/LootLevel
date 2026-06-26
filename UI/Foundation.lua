@@ -216,6 +216,19 @@ local function RefreshScaledLayout(includeDeferred)
     end
 end
 
+local FinishDeferredScaleRefresh
+FinishDeferredScaleRefresh = function()
+    if NS.IsCombatLocked and NS:IsCombatLocked() then
+        if NS.RunWhenOutOfCombat then
+            NS:RunWhenOutOfCombat("deferredScaleRefresh", FinishDeferredScaleRefresh, true)
+        end
+        return
+    end
+
+    RefreshScaledLayout(true)
+    ScaleLayout.EndPreview()
+end
+
 function ScaleLayout.WithDeferred(callback)
     if type(callback) ~= "function" then
         return
@@ -234,15 +247,13 @@ function ScaleLayout.ScheduleDeferredRefresh()
     local serial = ScaleLayout.serial
 
     if not C_Timer or not C_Timer.After then
-        RefreshScaledLayout(true)
-        ScaleLayout.EndPreview()
+        FinishDeferredScaleRefresh()
         return
     end
 
     C_Timer.After(ScaleLayout.debounceSeconds, function()
         if serial == ScaleLayout.serial then
-            RefreshScaledLayout(true)
-            ScaleLayout.EndPreview()
+            FinishDeferredScaleRefresh()
         end
     end)
 end

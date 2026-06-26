@@ -288,6 +288,10 @@ function NS:GetActiveLayerSetKey()
 end
 
 function NS:RefreshLayerRendering()
+    if self.IsCombatLocked and self:IsCombatLocked() then
+        return
+    end
+
     if UI.RenderCache and UI.RenderCache.RefreshParent then
         for _, parent in ipairs(self.gridParents or {}) do
             UI.RenderCache.RefreshParent(parent)
@@ -305,6 +309,10 @@ function NS:SetActiveLayerSet(layerSetKey, silent)
     local normalized = NormalizeLayerSetKey(layerSetKey)
     if not normalized then
         self:Print(("Unknown layer set: %s"):format(tostring(layerSetKey or "")))
+        return false
+    end
+
+    if self.BlockCombatAction and self:BlockCombatAction("Changing layer sets", silent) then
         return false
     end
 
@@ -341,6 +349,10 @@ function NS:SetActiveLayer(layerKey, silent)
     local normalized = NormalizeLayerKey(layerKey)
     if not normalized then
         self:Print(("Unknown layer: %s"):format(tostring(layerKey or "")))
+        return false
+    end
+
+    if self.BlockCombatAction and self:BlockCombatAction("Changing layers", silent) then
         return false
     end
 

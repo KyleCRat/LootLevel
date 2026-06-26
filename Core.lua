@@ -99,15 +99,23 @@ eventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
     NS.db = LootLevelDB
     NS.version = GetVersion()
 
-    if NS.CreateMainFrame then
-        NS:CreateMainFrame()
-    end
-
     if NS.RegisterSlashCommands then
         NS:RegisterSlashCommands()
     end
 
-    if NS.db.shown ~= false and NS.ShowMainFrame then
-        NS:ShowMainFrame()
+    local function LoadUI()
+        if NS.CreateMainFrame then
+            NS:CreateMainFrame()
+        end
+
+        if NS.db.shown ~= false and NS.ShowMainFrame then
+            NS:ShowMainFrame()
+        end
+    end
+
+    if NS.RunWhenOutOfCombat then
+        NS:RunWhenOutOfCombat("initialUI", LoadUI, true)
+    else
+        LoadUI()
     end
 end)

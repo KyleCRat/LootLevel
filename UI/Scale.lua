@@ -4,7 +4,14 @@ local UI = NS.UI
 
 function NS:SetFrameScalePercent(value, silent)
     if not self.db then
-        return
+        return false
+    end
+
+    if self.BlockCombatAction and self:BlockCombatAction("Changing scale", true) then
+        if self.scalePopup then
+            self.scalePopup:SetValue(UI.GetScalePercent(), true)
+        end
+        return false
     end
 
     local percent = UI.NormalizeScalePercent(value)
@@ -24,4 +31,6 @@ function NS:SetFrameScalePercent(value, silent)
             self:SaveFramePosition(self.frame)
         end
     end
+
+    return true
 end

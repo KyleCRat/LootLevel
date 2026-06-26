@@ -48,12 +48,13 @@ function LayerSelector.LayerButtonText(layer)
     return LayerSelector.Abbreviate(layer.name or layer.key)
 end
 
-function LayerSelector.ApplyButtonState(button, selected, enabled)
+function LayerSelector.ApplyButtonState(button, selected, enabled, interactive)
     if not button then
         return
     end
 
     enabled = enabled ~= false
+    button:EnableMouse(interactive ~= false)
     button:SetAlpha(enabled and 1 or 0.55)
 
     if button.SetBackdrop then
@@ -77,15 +78,16 @@ end
 
 function LayerSelector.Refresh()
     local activeLayerSet = Layers.GetActiveLayerSetKey()
+    local locked = NS.IsCombatLocked and NS:IsCombatLocked()
 
     for _, record in ipairs(NS.layerSetButtons or {}) do
-        LayerSelector.ApplyButtonState(record.button, record.layerSetKey == activeLayerSet, true)
+        LayerSelector.ApplyButtonState(record.button, record.layerSetKey == activeLayerSet, not locked, not locked)
     end
 
     for _, record in ipairs(NS.layerButtons or {}) do
         local layerSetActive = record.layerSetKey == activeLayerSet
         local activeLayer = Layers.GetActiveLayerKey(record.layerSetKey)
-        LayerSelector.ApplyButtonState(record.button, layerSetActive and record.layerKey == activeLayer, layerSetActive)
+        LayerSelector.ApplyButtonState(record.button, layerSetActive and record.layerKey == activeLayer, layerSetActive and not locked, not locked)
     end
 end
 

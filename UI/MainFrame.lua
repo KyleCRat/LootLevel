@@ -131,6 +131,15 @@ function NS:CreateMainFrame()
         return self.frame
     end
 
+    if self.IsCombatLocked and self:IsCombatLocked() then
+        if self.RunWhenOutOfCombat then
+            self:RunWhenOutOfCombat("createMainFrame", function()
+                NS:CreateMainFrame()
+            end, true)
+        end
+        return nil
+    end
+
     local frame = CreateFrame("Frame", "LootLevelFrame", UI.GetPixelRoot(), BackdropTemplateMixin and "BackdropTemplate")
     frame:SetScale(1)
     self.db.scalePercent = UI.NormalizeScalePercent(self.db.scalePercent)
@@ -214,15 +223,41 @@ function NS:RefreshMainFrameLayout()
         return
     end
 
+    if self.IsCombatLocked and self:IsCombatLocked() then
+        if self.RunWhenOutOfCombat then
+            self:RunWhenOutOfCombat("refreshMainFrameLayout", function()
+                NS:RefreshMainFrameLayout()
+            end, true)
+        end
+        return
+    end
+
     RefreshFrameShell(self.frame)
     UI.SnapFramePosition(self.frame)
 end
 
 function NS:ShowMainFrame()
+    if self.IsCombatLocked and self:IsCombatLocked() then
+        if self.frame and self.frame:IsShown() then
+            return true
+        end
+
+        if self.BlockCombatAction then
+            self:BlockCombatAction("Opening LootLevel")
+        end
+        return false
+    end
+
     if not self.frame then
         self:CreateMainFrame()
     end
+
+    if not self.frame then
+        return false
+    end
+
     self.frame:Show()
+    return true
 end
 
 function NS:HideMainFrame()
@@ -232,20 +267,24 @@ function NS:HideMainFrame()
 end
 
 function NS:ToggleMainFrame()
-    if not self.frame then
-        self:CreateMainFrame()
-    end
-
-    if self.frame:IsShown() then
+    if self.frame and self.frame:IsShown() then
         self.frame:Hide()
     else
-        self.frame:Show()
+        self:ShowMainFrame()
     end
 end
 
 function NS:ResetMainFramePosition()
+    if self.BlockCombatAction and self:BlockCombatAction("Resetting LootLevel position") then
+        return false
+    end
+
     if not self.frame then
         self:CreateMainFrame()
+    end
+
+    if not self.frame then
+        return false
     end
 
     self.db.position = {
@@ -256,4 +295,5 @@ function NS:ResetMainFramePosition()
     }
     self:RestoreFramePosition(self.frame)
     self:Print("Frame position reset.")
+    return true
 end

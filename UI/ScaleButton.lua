@@ -2,6 +2,27 @@ local ADDON_NAME, NS = ...
 
 local UI = NS.UI
 
+function UI.RefreshCombatLockoutControls()
+    local locked = NS.IsCombatLocked and NS:IsCombatLocked()
+
+    if NS.scaleButton then
+        NS.scaleButton:SetAlpha(locked and 0.45 or 1)
+        NS.scaleButton:EnableMouse(not locked)
+    end
+
+    if locked and NS.scalePopup and NS.scalePopup.Hide then
+        NS.scalePopup:Hide()
+    end
+
+    if locked and UI.ScaleLayout and UI.ScaleLayout.EndPreview then
+        UI.ScaleLayout.EndPreview()
+    end
+
+    if UI.LayerSelector and UI.LayerSelector.Refresh then
+        UI.LayerSelector.Refresh()
+    end
+end
+
 function UI.CreateScaleButton(parent)
     local button = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
     UI.SetLayoutBox(button, "TOPRIGHT", parent, "TOPRIGHT", -38, -7, 46, 20)
@@ -61,5 +82,6 @@ function UI.CreateScaleButton(parent)
         end)
     end
 
+    UI.RefreshCombatLockoutControls()
     return button
 end
