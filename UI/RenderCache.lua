@@ -1,6 +1,7 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
+local Helpers = NS.Helpers
 local Borders = UI.Borders
 local CellStyles = UI.CellStyles
 local GridLines = UI.GridLines
@@ -84,12 +85,7 @@ function RenderCache.CaptureCells(parent)
 end
 
 function RenderCache.CopyBlockMap(blockByCoord)
-    local copy = {}
-    for coordKey, block in pairs(blockByCoord or {}) do
-        copy[coordKey] = block
-    end
-
-    return copy
+    return Helpers.ShallowCopy(blockByCoord) or {}
 end
 
 function RenderCache.BuildParent(parent, state)

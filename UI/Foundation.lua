@@ -2,6 +2,7 @@ local ADDON_NAME, NS = ...
 
 local UI = NS.UI or {}
 NS.UI = UI
+local Helpers = NS.Helpers
 
 local FRAME_BACKDROP = {
     bgFile = "Interface\\Buttons\\WHITE8X8",
@@ -20,15 +21,6 @@ local SCALE_MIN_PERCENT = 50
 local SCALE_MAX_PERCENT = 200
 local SCALE_STEP_PERCENT = 5
 local SCALE_DEFAULT_PERCENT = 100
-
-local VALID_FONT_FLAGS = {
-    [""] = true,
-    OUTLINE = true,
-    THICKOUTLINE = true,
-    OUTLINESLUG = true,
-    MONOCHROMEOUTLINE = true,
-    MONOCHROMETHICKOUTLINE = true,
-}
 
 local ScaleLayout = {
     debounceSeconds = 0.12,
@@ -80,19 +72,6 @@ end
 
 local function FormatScalePercent(value)
     return ("%d%%"):format(NormalizeScalePercent(value))
-end
-
-local function GetPixelToUIUnitFactor()
-    if PixelUtil and PixelUtil.GetPixelToUIUnitFactor then
-        return PixelUtil.GetPixelToUIUnitFactor()
-    end
-
-    local _, physicalHeight = GetPhysicalScreenSize()
-    if physicalHeight and physicalHeight > 0 then
-        return 768 / physicalHeight
-    end
-
-    return UIParent:GetEffectiveScale()
 end
 
 local function SetPixelPoint(frame, point, relativeTo, relativePoint, x, y)
@@ -154,16 +133,6 @@ local function ApplyLayoutRecord(record)
     end
 end
 
-local function ApplyFontRecord(record)
-    local fontString = record.fontString
-    if not fontString then
-        return
-    end
-
-    local size = math.max(1, ScalePixel(record.size))
-    fontString:SetFont(record.path, size, record.flags or "")
-end
-
 local function RegisterLayoutRecord(record)
     if ScaleLayout.deferredDepth > 0
         or (record.region and record.region.deferScaleLayout)
@@ -175,19 +144,6 @@ local function RegisterLayoutRecord(record)
     NS.layoutRecords = NS.layoutRecords or {}
     NS.layoutRecords[#NS.layoutRecords + 1] = record
     ApplyLayoutRecord(record)
-    return record
-end
-
-local function RegisterFontRecord(record)
-    if ScaleLayout.deferredDepth > 0
-        or (record.fontString and record.fontString.deferScaleLayout)
-    then
-        record.deferScaleLayout = true
-    end
-
-    NS.layoutFonts = NS.layoutFonts or {}
-    NS.layoutFonts[#NS.layoutFonts + 1] = record
-    ApplyFontRecord(record)
     return record
 end
 
@@ -236,123 +192,6 @@ local function SetLayoutPoints(region, points, width, height)
     })
 end
 
-local function NormalizeFontFlagString(value)
-    local flags = tostring(value or ""):upper():gsub("[%s,]+", "")
-    if VALID_FONT_FLAGS[flags] then
-        return flags
-    end
-
-    return ""
-end
-
-local function NormalizeFontOutline(value)
-    if value == true then
-        return "OUTLINE"
-    end
-    if value == false or value == nil then
-        return ""
-    end
-
-    local outline = tostring(value):lower()
-    if outline == "normal" or outline == "outline" then
-        return "OUTLINE"
-    end
-    if outline == "thick" or outline == "thickoutline" then
-        return "THICKOUTLINE"
-    end
-    if outline == "slug" or outline == "outlineslug" then
-        return "OUTLINESLUG"
-    end
-    if outline == "mono" or outline == "monochrome" or outline == "monochromeoutline" then
-        return "MONOCHROMEOUTLINE"
-    end
-    if outline == "monothick" or outline == "monochromethick" or outline == "monochromethickoutline" then
-        return "MONOCHROMETHICKOUTLINE"
-    end
-
-    return ""
-end
-
-local function FontFlags(font)
-    if type(font) ~= "table" then
-        return ""
-    end
-
-    if font.flags ~= nil then
-        return NormalizeFontFlagString(font.flags)
-    end
-
-    local outlineValue = font.outline
-    if outlineValue == nil then
-        outlineValue = font.border
-    end
-
-    local outline = NormalizeFontOutline(outlineValue)
-    local monochrome = font.monochrome == true
-    local slug = font.slug == true
-
-    if outline == "OUTLINESLUG" or outline == "MONOCHROMEOUTLINE" or outline == "MONOCHROMETHICKOUTLINE" then
-        return outline
-    end
-
-    if monochrome then
-        if outline == "THICKOUTLINE" then
-            return "MONOCHROMETHICKOUTLINE"
-        end
-        if outline == "OUTLINE" then
-            return "MONOCHROMEOUTLINE"
-        end
-        return ""
-    end
-
-    if outline == "THICKOUTLINE" then
-        return "THICKOUTLINE"
-    end
-    if outline == "OUTLINE" then
-        return slug and "OUTLINESLUG" or "OUTLINE"
-    end
-
-    return ""
-end
-
-local function FontSize(font, fallbackSize)
-    if type(font) == "table" then
-        return tonumber(font.size) or fallbackSize
-    end
-
-    return fallbackSize
-end
-
-local function FontWithFallbackSize(font, fallbackSize)
-    if type(font) ~= "table" then
-        return { size = fallbackSize }
-    end
-
-    local copy = {}
-    for key, value in pairs(font) do
-        copy[key] = value
-    end
-    if copy.size == nil then
-        copy.size = fallbackSize
-    end
-
-    return copy
-end
-
-local function ResolveTextFont(font, fallbackSize, bold)
-    local size = math.max(1, FontSize(font, fallbackSize or 12))
-    local path = bold and NS.FONT_BOLD_PATH or NS.FONT_PATH
-    if type(font) == "table" and type(font.path) == "string" then
-        path = font.path
-    end
-
-    return {
-        path = path,
-        size = size,
-        flags = FontFlags(font),
-    }
-end
-
 local function RefreshScaledLayout(includeDeferred)
     for _, record in ipairs(NS.layoutRecords or {}) do
         if includeDeferred or not record.deferScaleLayout then
@@ -360,10 +199,8 @@ local function RefreshScaledLayout(includeDeferred)
         end
     end
 
-    for _, record in ipairs(NS.layoutFonts or {}) do
-        if includeDeferred or not record.deferScaleLayout then
-            ApplyFontRecord(record)
-        end
+    if UI.RefreshScaledFonts then
+        UI.RefreshScaledFonts(includeDeferred)
     end
 
     if NS.scaleButtonText then
@@ -447,109 +284,6 @@ local function ApplyTexturePixelSnapping(texture)
     end
 end
 
-local function GetPhysicalSize()
-    local width, height
-    if GetPhysicalScreenSize then
-        width, height = GetPhysicalScreenSize()
-    end
-
-    if not width or width <= 0 or not height or height <= 0 then
-        local scale = UIParent:GetEffectiveScale()
-        local factor = GetPixelToUIUnitFactor()
-        width = UIParent:GetWidth() * scale / factor
-        height = UIParent:GetHeight() * scale / factor
-    end
-
-    return Pixel(width), Pixel(height)
-end
-
-local function ApplyPixelRootScale(root)
-    local pixelScale = GetPixelToUIUnitFactor()
-
-    if root.SetIgnoreParentScale then
-        root:SetIgnoreParentScale(true)
-        root:SetScale(pixelScale)
-    else
-        root:SetScale(pixelScale / UIParent:GetEffectiveScale())
-    end
-end
-
-local function UpdatePixelRoot(root)
-    local width, height = GetPhysicalSize()
-    ApplyPixelRootScale(root)
-    SetPixelSize(root, width, height)
-    root:ClearAllPoints()
-    root:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-end
-
-local function GetPixelRoot()
-    if NS.pixelRoot then
-        return NS.pixelRoot
-    end
-
-    local root = CreateFrame("Frame", "LootLevelPixelRoot", UIParent)
-    root:SetFrameStrata("HIGH")
-    root:SetFrameLevel(1)
-    UpdatePixelRoot(root)
-
-    root:RegisterEvent("DISPLAY_SIZE_CHANGED")
-    root:RegisterEvent("UI_SCALE_CHANGED")
-    root:RegisterEvent("PLAYER_ENTERING_WORLD")
-    root:SetScript("OnEvent", function(self)
-        UpdatePixelRoot(self)
-        if NS.frame then
-            NS:RestoreFramePosition(NS.frame)
-        end
-    end)
-
-    NS.pixelRoot = root
-    return root
-end
-
-local function SnapFramePosition(frame)
-    local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
-    frame:ClearAllPoints()
-    frame:SetPoint(
-        point or "CENTER",
-        relativeTo or NS.pixelRoot or UIParent,
-        relativePoint or "CENTER",
-        Pixel(x),
-        Pixel(y)
-    )
-end
-
-local function Color(name)
-    local color = type(name) == "table" and name or NS.Colors[name or "blank"] or NS.Colors.blank
-    return color[1], color[2], color[3], color[4] or 1
-end
-
-local function TextColorFor(colorName)
-    if colorName == "blank" or colorName == "panel" or colorName == "frame" then
-        return 1, 1, 1, 1
-    end
-
-    return 0, 0, 0, 1
-end
-
-local function CreateText(parent, text, font, colorName, justifyH, justifyV, bold)
-    local fs = parent:CreateFontString(nil, "OVERLAY")
-    local resolvedFont = ResolveTextFont(font, 12, bold)
-    RegisterFontRecord({
-        fontString = fs,
-        path = resolvedFont.path,
-        size = resolvedFont.size,
-        flags = resolvedFont.flags,
-    })
-    fs:SetText(text or "")
-    fs:SetJustifyH(justifyH or "CENTER")
-    fs:SetJustifyV(justifyV or "MIDDLE")
-    fs:SetTextColor(Color(colorName or "black"))
-    if fs.SetWordWrap then
-        fs:SetWordWrap(false)
-    end
-    return fs
-end
-
 UI.FrameBackdrop = FRAME_BACKDROP
 UI.Grid = {
     color = { 0, 0, 0, 1 },
@@ -617,21 +351,11 @@ UI.UpdateLayoutRecord = function(record, values)
         return record
     end
 
-    for key, value in pairs(values) do
-        record[key] = value
-    end
+    Helpers.ShallowAssign(record, values)
     ApplyLayoutRecord(record)
     return record
 end
-UI.FontSize = FontSize
-UI.FontWithFallbackSize = FontWithFallbackSize
-UI.ResolveTextFont = ResolveTextFont
 UI.ApplyTexturePixelSnapping = ApplyTexturePixelSnapping
-UI.GetPixelRoot = GetPixelRoot
-UI.SnapFramePosition = SnapFramePosition
-UI.Color = Color
-UI.TextColorFor = TextColorFor
-UI.CreateText = CreateText
 UI.ScaleLayout = ScaleLayout
 UI.RefreshScaledLayout = RefreshScaledLayout
 UI.WithDeferredScaleLayout = function(callback)

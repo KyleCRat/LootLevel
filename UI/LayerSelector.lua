@@ -1,6 +1,7 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
+local Layers = UI.Layers
 
 local LayerSelector = {
     topOffset = -42,
@@ -75,7 +76,7 @@ function LayerSelector.ApplyButtonState(button, selected, enabled)
 end
 
 function LayerSelector.Refresh()
-    local activeLayerSet = NS:GetActiveLayerSetKey()
+    local activeLayerSet = Layers.GetActiveLayerSetKey()
 
     for _, record in ipairs(NS.layerSetButtons or {}) do
         LayerSelector.ApplyButtonState(record.button, record.layerSetKey == activeLayerSet, true)
@@ -83,7 +84,7 @@ function LayerSelector.Refresh()
 
     for _, record in ipairs(NS.layerButtons or {}) do
         local layerSetActive = record.layerSetKey == activeLayerSet
-        local activeLayer = NS:GetActiveLayerKey(record.layerSetKey)
+        local activeLayer = Layers.GetActiveLayerKey(record.layerSetKey)
         LayerSelector.ApplyButtonState(record.button, layerSetActive and record.layerKey == activeLayer, layerSetActive)
     end
 end
@@ -133,7 +134,7 @@ function LayerSelector.CreateButtons(parent)
             NS:SetActiveLayerSet(buttonLayerSetKey, true)
         end)
         setButton:SetScript("OnEnter", function(self)
-            LayerSelector.ShowTooltip(self, UI.LayerSetDisplayName(buttonLayerSetKey), "Select expansion.")
+            LayerSelector.ShowTooltip(self, Layers.LayerSetDisplayName(buttonLayerSetKey), "Select expansion.")
         end)
         setButton:SetScript("OnLeave", function()
             GameTooltip:Hide()
@@ -155,7 +156,7 @@ function LayerSelector.CreateButtons(parent)
                 NS:SetActiveLayer(buttonLayerKey, true)
             end)
             layerButton:SetScript("OnEnter", function(self)
-                LayerSelector.ShowTooltip(self, UI.LayerDisplayName(buttonLayerKey), UI.LayerSetDisplayName(buttonLayerSetKey))
+                LayerSelector.ShowTooltip(self, Layers.LayerDisplayName(buttonLayerKey), Layers.LayerSetDisplayName(buttonLayerSetKey))
             end)
             layerButton:SetScript("OnLeave", function()
                 GameTooltip:Hide()

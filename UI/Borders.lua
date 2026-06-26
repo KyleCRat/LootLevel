@@ -1,6 +1,7 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
+local Helpers = NS.Helpers
 local Coordinates = NS.Coordinates
 local BorderPriority = UI.BorderPriority
 local StyleLayer = UI.StyleLayer
@@ -104,10 +105,7 @@ local function CopyBorderStyle(value, priority, order)
         return nil
     end
 
-    local copy = {}
-    for key, styleValue in pairs(style) do
-        copy[key] = styleValue
-    end
+    local copy = Helpers.ShallowCopy(style) or {}
     copy.priority = priority or copy.priority or 0
     copy.order = order or copy.order or 0
     return copy
@@ -508,10 +506,7 @@ local function BlockBorderStyle(block, style)
         return style
     end
 
-    local copy = {}
-    for key, value in pairs(style) do
-        copy[key] = value
-    end
+    local copy = Helpers.ShallowCopy(style) or {}
     copy.alpha = alpha
     return copy
 end
@@ -526,10 +521,7 @@ local function RelatedBlockBorderStyle(block, neighborBlock, style)
         return style
     end
 
-    local copy = {}
-    for key, value in pairs(style) do
-        copy[key] = value
-    end
+    local copy = Helpers.ShallowCopy(style) or {}
     copy.alpha = alpha
     return copy
 end

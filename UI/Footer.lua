@@ -1,14 +1,7 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
-
-local function LayerData(layerKey)
-    return layerKey and NS.Data and NS.Data.layers and NS.Data.layers[layerKey] or nil
-end
-
-local function LayerSetData(layerSetKey)
-    return layerSetKey and NS.Data and NS.Data.layerSets and NS.Data.layerSets[layerSetKey] or nil
-end
+local Layers = UI.Layers
 
 local function LayerFooterText(layer, side)
     if not layer then
@@ -31,10 +24,10 @@ local function LayerFooterText(layer, side)
 end
 
 local function ActiveFooterRightText()
-    local layerSetKey = NS.GetActiveLayerSetKey and NS:GetActiveLayerSetKey() or NS.Data.defaultLayerSet
-    local layerSet = LayerSetData(layerSetKey)
-    local activeLayerKey = NS.GetActiveLayerKey and NS:GetActiveLayerKey(layerSetKey) or nil
-    local activeLayer = LayerData(activeLayerKey)
+    local layerSetKey = Layers.GetActiveLayerSetKey()
+    local layerSet = Layers.LayerSetData(layerSetKey)
+    local activeLayerKey = Layers.GetActiveLayerKey(layerSetKey)
+    local activeLayer = Layers.LayerData(activeLayerKey)
     return LayerFooterText(activeLayer, "right") or LayerFooterText(layerSet, "right") or NS.Data.footerRight or ""
 end
 

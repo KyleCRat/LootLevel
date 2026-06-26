@@ -1,6 +1,7 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
+local Helpers = NS.Helpers
 local CellStyles = {}
 UI.CellStyles = CellStyles
 
@@ -13,11 +14,7 @@ local function SetCellStyleLayer(cellData, layerKey, specificity, values)
     local layer = cellData.styleLayers[layerKey] or {}
     layer.specificity = specificity or layer.specificity or 0
 
-    for key, value in pairs(values) do
-        if value ~= nil then
-            layer[key] = value
-        end
-    end
+    Helpers.ShallowAssign(layer, values)
 
     cellData.styleLayers[layerKey] = layer
 end

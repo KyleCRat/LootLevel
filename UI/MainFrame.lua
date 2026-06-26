@@ -2,6 +2,7 @@ local ADDON_NAME, NS = ...
 
 local UI = NS.UI
 local Metrics = UI.Metrics
+local Layers = UI.Layers
 
 local function BuildShellLayout()
     local tableLayout = UI.BuildTableLayout and UI.BuildTableLayout() or nil
@@ -58,7 +59,7 @@ local function ApplyShellLayout(frame, shellLayout)
 end
 
 local function ActiveLayerSetCacheKey()
-    return NS.GetActiveLayerSetKey and NS:GetActiveLayerSetKey() or "__default"
+    return Layers.GetActiveLayerSetKey() or "__default"
 end
 
 local function HideTableLayers(frame)

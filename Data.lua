@@ -1,5 +1,6 @@
 local ADDON_NAME, NS = ...
 
+local Helpers = NS.Helpers
 local Coordinates = NS.Coordinates
 local CellCoordinate = Coordinates.CellCoordinate
 local NormalizeCellRange = Coordinates.NormalizeCellRange
@@ -62,11 +63,7 @@ local function CopyFontStyle(definition)
     end
 
     if type(definition.font) == "table" then
-        local font = {}
-        for key, value in pairs(definition.font) do
-            font[key] = value
-        end
-        return font
+        return Helpers.ShallowCopy(definition.font)
     end
 
     return nil
@@ -79,15 +76,7 @@ local function MergeFontStyles(defaultDefinition, overrideDefinition)
         return nil
     end
 
-    local merged = {}
-    for key, value in pairs(defaultFont or {}) do
-        merged[key] = value
-    end
-    for key, value in pairs(overrideFont or {}) do
-        merged[key] = value
-    end
-
-    return merged
+    return Helpers.ShallowMerge(defaultFont, overrideFont)
 end
 
 local function Table(definition)

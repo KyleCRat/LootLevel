@@ -1,6 +1,7 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
+local Helpers = NS.Helpers
 local Metrics = UI.Metrics
 local StyleLayer = UI.StyleLayer
 local MergedVerticalLabel = UI.MergedVerticalLabel
@@ -13,18 +14,7 @@ local Cells = {}
 UI.Cells = Cells
 
 local function MergeCellData(defaults, source)
-    local cellData = {}
-    for key, value in pairs(defaults or {}) do
-        cellData[key] = value
-    end
-
-    if type(source) == "table" then
-        for key, value in pairs(source) do
-            cellData[key] = value
-        end
-    end
-
-    return cellData
+    return Helpers.ShallowMerge(defaults, source)
 end
 
 local function GetConfiguredCellData(tableKey, coord)

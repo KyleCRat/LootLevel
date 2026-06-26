@@ -1,6 +1,7 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
+local Helpers = NS.Helpers
 local Grid = UI.Grid
 local GridLines = {}
 UI.GridLines = GridLines
@@ -57,15 +58,6 @@ local function RegisterGridLineTexture(overlay, line)
     end
 end
 
-local function CopyGridLine(line)
-    local copy = {}
-    for key, value in pairs(line or {}) do
-        copy[key] = value
-    end
-
-    return copy
-end
-
 local function AddPatternedGridLineSegments(lines, line, segmentLength, segmentGap)
     local length
     if line.vertical then
@@ -77,7 +69,7 @@ local function AddPatternedGridLineSegments(lines, line, segmentLength, segmentG
     local offset = 0
     while offset < length do
         local segmentEnd = math.min(offset + segmentLength, length)
-        local segmentLine = CopyGridLine(line)
+        local segmentLine = Helpers.ShallowCopy(line)
 
         if line.vertical then
             segmentLine.y1 = line.y1 + offset
@@ -99,7 +91,7 @@ local function AddGridLineRenderSegments(lines, line)
     elseif line.style == "dashed" then
         AddPatternedGridLineSegments(lines, line, Grid.dashedDash, Grid.dashedGap)
     else
-        lines[#lines + 1] = CopyGridLine(line)
+        lines[#lines + 1] = Helpers.ShallowCopy(line)
     end
 end
 
