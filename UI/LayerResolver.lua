@@ -156,8 +156,25 @@ local function OwnedSpanFragments(definition, ownership)
     return fragments
 end
 
+local function OwnedSingleCellFragments(definition, ownership)
+    local span = NormalizeCellSpan(nil, nil, definition and definition.span)
+    if not span then
+        return {}
+    end
+
+    local fragments = {}
+    ForEachCellSpanCoord(span, function(column, row, coord)
+        if DefinitionOwnsCoord(ownership, coord, definition) then
+            fragments[#fragments + 1] = SpanBounds(column, column, row, row)
+        end
+    end)
+
+    return fragments
+end
+
 LayerResolver.DefinitionWinsOver = DefinitionWinsOver
 LayerResolver.BuildTableOwnership = BuildTableOwnership
 LayerResolver.OwnerAt = OwnerAt
 LayerResolver.DefinitionOwnsCoord = DefinitionOwnsCoord
 LayerResolver.OwnedSpanFragments = OwnedSpanFragments
+LayerResolver.OwnedSingleCellFragments = OwnedSingleCellFragments

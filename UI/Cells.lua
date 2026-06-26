@@ -134,7 +134,9 @@ local function CreateCell(parent, x, y, width, height, cellData)
     highlight:SetColorTexture(1, 1, 1, 0.22)
 
     local text
-    if type(cellData.atlas) == "string" and cellData.atlas ~= "" then
+    if cellData.backgroundOnly then
+        -- Background-only cells intentionally carry no visual content.
+    elseif type(cellData.atlas) == "string" and cellData.atlas ~= "" then
         cell.icon = CreateAtlasIcon(cell, width, height, cellData.atlas)
     elseif cellData.vertical then
         text = CreateVerticalText(cell, 0, 0, width, height, cellData.text or "", cellData.font, cellData.bold)

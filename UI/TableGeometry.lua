@@ -106,6 +106,26 @@ local function CopyMergedCellForSpan(mergedCell, span)
     return copy
 end
 
+local function IsMultiCellSpan(span)
+    return span and (span.fromColumn ~= span.toColumn or span.fromRow ~= span.toRow)
+end
+
+local function ShouldRenderInactiveSpanAsBackgroundCells(mergedCell)
+    return mergedCell
+        and mergedCell.layer
+        and not Layers.IsLayerActive(mergedCell.layer)
+        and IsMultiCellSpan(mergedCell.span)
+end
+
+local function CopyMergedCellAsBackgroundCell(mergedCell, span)
+    local copy = CopyMergedCellForSpan(mergedCell, span)
+    copy.text = ""
+    copy.atlas = nil
+    copy.vertical = false
+    copy.backgroundOnly = true
+    return copy
+end
+
 local function BuildTableSpanMap(tableDefinition, rowLayout, ownership)
     local tableKey = tableDefinition.key
     local spanMap = {}
@@ -113,8 +133,15 @@ local function BuildTableSpanMap(tableDefinition, rowLayout, ownership)
 
     for _, mergedCell in ipairs(NS.Data.mergedCells or {}) do
         if mergedCell.table == tableKey and Layers.IsLayerVisible(mergedCell.layer) then
-            local fragments = LayerResolver and LayerResolver.OwnedSpanFragments(mergedCell, ownership)
-                or { NormalizeCellSpan(nil, nil, mergedCell.span) }
+            local useBackgroundCells = ShouldRenderInactiveSpanAsBackgroundCells(mergedCell)
+            local fragments
+            if useBackgroundCells and LayerResolver then
+                fragments = LayerResolver.OwnedSingleCellFragments(mergedCell, ownership)
+            else
+                fragments = LayerResolver and LayerResolver.OwnedSpanFragments(mergedCell, ownership)
+                    or { NormalizeCellSpan(nil, nil, mergedCell.span) }
+            end
+
             for _, span in ipairs(fragments or {}) do
                 local anchorCoord = span and CoordFromIndex(span.fromColumn, span.fromRow)
                 local fromColumnIndex, toColumnIndex = SpanTableColumnRange(tableDefinition, span)
@@ -124,7 +151,12 @@ local function BuildTableSpanMap(tableDefinition, rowLayout, ownership)
                         and span.toColumn == mergedCell.span.toColumn
                         and span.fromRow == mergedCell.span.fromRow
                         and span.toRow == mergedCell.span.toRow
-                    local cellData = isFullSpan and mergedCell or CopyMergedCellForSpan(mergedCell, span)
+                    local cellData
+                    if useBackgroundCells then
+                        cellData = CopyMergedCellAsBackgroundCell(mergedCell, span)
+                    else
+                        cellData = isFullSpan and mergedCell or CopyMergedCellForSpan(mergedCell, span)
+                    end
                     local record = {
                         anchorCoord = anchorCoord,
                         cellData = cellData,
