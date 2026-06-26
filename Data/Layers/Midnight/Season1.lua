@@ -22,7 +22,7 @@ Layer({
     name = "Midnight Season 1",
     buttonText = "S1",
     order = 10,
-    inactiveAlpha = 0.3,
+    inactiveAlpha = 0.1,
     bodyScroll = {
         ["midnight.raidActivity"] = { row = 2 },
     },

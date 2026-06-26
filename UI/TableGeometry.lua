@@ -1,10 +1,11 @@
 local ADDON_NAME, NS = ...
 
 local UI = NS.UI
+local Helpers = NS.Helpers
 local Coordinates = NS.Coordinates
 local Metrics = UI.Metrics
 local Layers = UI.Layers
-local Borders = UI.Borders
+local LayerResolver = UI.LayerResolver
 local TableGeometry = {}
 UI.TableGeometry = TableGeometry
 
@@ -95,30 +96,47 @@ local function SpanVisualHeight(span, rowLayout)
     return math.max(1, ((endRow.visualIndex - startRow.visualIndex) + 1) * Metrics.rowHeight)
 end
 
-local function BuildTableSpanMap(tableDefinition, rowLayout)
+local function CopyMergedCellForSpan(mergedCell, span)
+    local copy = Helpers.ShallowCopy(mergedCell) or {}
+    copy.coord = CoordFromIndex(span.fromColumn, span.fromRow)
+    copy.startCoord = copy.coord
+    copy.endCoord = CoordFromIndex(span.toColumn, span.toRow)
+    copy.span = span
+    copy.fragmentOf = mergedCell
+    return copy
+end
+
+local function BuildTableSpanMap(tableDefinition, rowLayout, ownership)
     local tableKey = tableDefinition.key
     local spanMap = {}
+    ownership = ownership or (LayerResolver and LayerResolver.BuildTableOwnership(tableKey))
 
     for _, mergedCell in ipairs(NS.Data.mergedCells or {}) do
         if mergedCell.table == tableKey and Layers.IsLayerVisible(mergedCell.layer) then
-            local span = NormalizeCellSpan(nil, nil, mergedCell.span)
-            local anchorCoord = span and CoordFromIndex(span.fromColumn, span.fromRow)
-            local fromColumnIndex, toColumnIndex = SpanTableColumnRange(tableDefinition, span)
-            if span and anchorCoord and fromColumnIndex and toColumnIndex then
-                local record = {
-                    anchorCoord = anchorCoord,
-                    cellData = mergedCell,
-                    span = span,
-                    fromColumnIndex = fromColumnIndex,
-                    toColumnIndex = toColumnIndex,
-                    height = SpanVisualHeight(span, rowLayout),
-                }
-                ForEachCellSpanCoord(span, function(_, _, coord)
-                    local existing = spanMap[coord] and spanMap[coord].cellData
-                    if Borders.BlockWinsOver(existing, mergedCell) then
+            local fragments = LayerResolver and LayerResolver.OwnedSpanFragments(mergedCell, ownership)
+                or { NormalizeCellSpan(nil, nil, mergedCell.span) }
+            for _, span in ipairs(fragments or {}) do
+                local anchorCoord = span and CoordFromIndex(span.fromColumn, span.fromRow)
+                local fromColumnIndex, toColumnIndex = SpanTableColumnRange(tableDefinition, span)
+                if span and anchorCoord and fromColumnIndex and toColumnIndex then
+                    local isFullSpan = mergedCell.span
+                        and span.fromColumn == mergedCell.span.fromColumn
+                        and span.toColumn == mergedCell.span.toColumn
+                        and span.fromRow == mergedCell.span.fromRow
+                        and span.toRow == mergedCell.span.toRow
+                    local cellData = isFullSpan and mergedCell or CopyMergedCellForSpan(mergedCell, span)
+                    local record = {
+                        anchorCoord = anchorCoord,
+                        cellData = cellData,
+                        span = span,
+                        fromColumnIndex = fromColumnIndex,
+                        toColumnIndex = toColumnIndex,
+                        height = SpanVisualHeight(span, rowLayout),
+                    }
+                    ForEachCellSpanCoord(span, function(_, _, coord)
                         spanMap[coord] = record
-                    end
-                end)
+                    end)
+                end
             end
         end
     end

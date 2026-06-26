@@ -9,6 +9,7 @@ local Layers = UI.Layers
 local CellStyles = UI.CellStyles
 local GridLines = UI.GridLines
 local Metrics = UI.Metrics
+local LayerResolver = UI.LayerResolver
 local Borders = {}
 UI.Borders = Borders
 
@@ -99,7 +100,7 @@ local function NormalizeBorderStyle(value)
     }
 end
 
-local function CopyBorderStyle(value, priority, order)
+local function CopyBorderStyle(value, priority, order, layerKey)
     local style = NormalizeBorderStyle(value)
     if not style then
         return nil
@@ -108,7 +109,32 @@ local function CopyBorderStyle(value, priority, order)
     local copy = Helpers.ShallowCopy(style) or {}
     copy.priority = priority or copy.priority or 0
     copy.order = order or copy.order or 0
+    if layerKey then
+        copy.layer = layerKey
+        copy.layerOrder = Layers.LayerRenderOrder(layerKey)
+        copy.alpha = Layers.LayerVisualAlpha(layerKey)
+    end
     return copy
+end
+
+local function LineWinsOver(existing, candidate)
+    if not existing then
+        return true
+    end
+
+    local existingLayerOrder = existing.layerOrder
+    local candidateLayerOrder = candidate and candidate.layerOrder
+    if existingLayerOrder and candidateLayerOrder and existingLayerOrder ~= candidateLayerOrder then
+        return candidateLayerOrder > existingLayerOrder
+    end
+
+    local existingPriority = existing.priority or 0
+    local candidatePriority = candidate and candidate.priority or 0
+    if candidatePriority ~= existingPriority then
+        return candidatePriority > existingPriority
+    end
+
+    return (candidate and candidate.order or 0) >= (existing.order or 0)
 end
 
 local function EnsureGrid(parent, tableKey)
@@ -188,14 +214,14 @@ local function BorderLineKey(line)
     return ("h:%d:%d:%d"):format(UI.Pixel(line.y), UI.Pixel(math.min(line.x1, line.x2)), UI.Pixel(math.max(line.x1, line.x2)))
 end
 
-local function BlockGridLine(parent, key, priority)
+local function BlockGridLine(parent, key, borderStyle)
     parent.gridLineBlocks = parent.gridLineBlocks or {}
     local existing = parent.gridLineBlocks[key]
-    if existing and existing > (priority or 0) then
+    if existing and not LineWinsOver(existing, borderStyle) then
         return
     end
 
-    parent.gridLineBlocks[key] = priority or 0
+    parent.gridLineBlocks[key] = borderStyle
 end
 
 local function StoreGridLine(parent, line, borderStyle)
@@ -205,9 +231,11 @@ local function StoreGridLine(parent, line, borderStyle)
 
     local key = BorderLineKey(line)
     if borderStyle.style == "none" then
-        BlockGridLine(parent, key, borderStyle.priority or 0)
+        BlockGridLine(parent, key, borderStyle)
         parent.gridLines = parent.gridLines or {}
-        parent.gridLines[key] = nil
+        if not parent.gridLines[key] or LineWinsOver(parent.gridLines[key], borderStyle) then
+            parent.gridLines[key] = nil
+        end
         return
     end
 
@@ -218,17 +246,16 @@ local function StoreGridLine(parent, line, borderStyle)
     line.priority = borderStyle.priority or BorderPriority.explicit
     line.order = borderStyle.order or 0
     line.alpha = borderStyle.alpha or UI.Grid.color[4]
+    line.layer = borderStyle.layer
+    line.layerOrder = borderStyle.layerOrder
 
-    local blockedPriority = parent.gridLineBlocks and parent.gridLineBlocks[key]
-    if blockedPriority and (line.priority or 0) <= blockedPriority then
+    local blockedStyle = parent.gridLineBlocks and parent.gridLineBlocks[key]
+    if blockedStyle and not LineWinsOver(blockedStyle, line) then
         return
     end
 
     local existing = parent.gridLines[key]
-    if not existing
-        or (line.priority or 0) > (existing.priority or 0)
-        or ((line.priority or 0) == (existing.priority or 0) and (line.order or 0) >= (existing.order or 0))
-    then
+    if LineWinsOver(existing, line) then
         parent.gridLines[key] = line
     end
 end
@@ -334,23 +361,7 @@ local function GetRelatedBlockInnerBorderStyle(block, neighborBlock, edge)
 end
 
 local function BlockWinsOver(existing, candidate)
-    if not existing then
-        return true
-    end
-
-    local existingLayerOrder = Layers.LayerRenderOrder(existing.layer)
-    local candidateLayerOrder = Layers.LayerRenderOrder(candidate.layer)
-    if candidateLayerOrder ~= existingLayerOrder then
-        return candidateLayerOrder > existingLayerOrder
-    end
-
-    local existingPriority = existing.priority or 0
-    local candidatePriority = candidate.priority or 0
-    if candidatePriority ~= existingPriority then
-        return candidatePriority > existingPriority
-    end
-
-    return (candidate.order or 0) >= (existing.order or 0)
+    return LayerResolver.DefinitionWinsOver(existing, candidate)
 end
 
 local function EnsureColorBlock(parent, blockData, order)
@@ -368,34 +379,34 @@ local function EnsureColorBlock(parent, blockData, order)
         end
         if blockData.border ~= nil then
             existing.border = blockData.border
-            existing.borderStyle = CopyBorderStyle(blockData.border, BorderPriority.block + (blockData.priority or 0), order or existing.order)
+            existing.borderStyle = CopyBorderStyle(blockData.border, BorderPriority.block + (blockData.priority or 0), order or existing.order, blockData.layer)
         end
         if blockData.innerBorder ~= nil then
             existing.innerBorder = blockData.innerBorder
-            existing.innerBorderStyle = CopyBorderStyle(blockData.innerBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
+            existing.innerBorderStyle = CopyBorderStyle(blockData.innerBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order, blockData.layer)
         end
         if blockData.innerRowBorder ~= nil then
             existing.innerRowBorder = blockData.innerRowBorder
-            existing.innerRowBorderStyle = CopyBorderStyle(blockData.innerRowBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
+            existing.innerRowBorderStyle = CopyBorderStyle(blockData.innerRowBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order, blockData.layer)
         end
         if blockData.innerColBorder ~= nil then
             existing.innerColBorder = blockData.innerColBorder
-            existing.innerColBorderStyle = CopyBorderStyle(blockData.innerColBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
+            existing.innerColBorderStyle = CopyBorderStyle(blockData.innerColBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order, blockData.layer)
         end
         if blockData.parentBlockId ~= nil then
             existing.parentBlockId = blockData.parentBlockId
         end
         if blockData.parentInnerBorder ~= nil then
             existing.parentInnerBorder = blockData.parentInnerBorder
-            existing.parentInnerBorderStyle = CopyBorderStyle(blockData.parentInnerBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
+            existing.parentInnerBorderStyle = CopyBorderStyle(blockData.parentInnerBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order, blockData.layer)
         end
         if blockData.parentInnerRowBorder ~= nil then
             existing.parentInnerRowBorder = blockData.parentInnerRowBorder
-            existing.parentInnerRowBorderStyle = CopyBorderStyle(blockData.parentInnerRowBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
+            existing.parentInnerRowBorderStyle = CopyBorderStyle(blockData.parentInnerRowBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order, blockData.layer)
         end
         if blockData.parentInnerColBorder ~= nil then
             existing.parentInnerColBorder = blockData.parentInnerColBorder
-            existing.parentInnerColBorderStyle = CopyBorderStyle(blockData.parentInnerColBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
+            existing.parentInnerColBorderStyle = CopyBorderStyle(blockData.parentInnerColBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order, blockData.layer)
         end
         if blockData.layer ~= nil then
             existing.layer = blockData.layer
@@ -418,13 +429,13 @@ local function EnsureColorBlock(parent, blockData, order)
         priority = blockData.priority or 0,
         order = order or 0,
     }
-    block.borderStyle = CopyBorderStyle(block.border, BorderPriority.block + block.priority, block.order)
-    block.innerBorderStyle = CopyBorderStyle(block.innerBorder, BorderPriority.block + block.priority, block.order)
-    block.innerRowBorderStyle = CopyBorderStyle(block.innerRowBorder, BorderPriority.block + block.priority, block.order)
-    block.innerColBorderStyle = CopyBorderStyle(block.innerColBorder, BorderPriority.block + block.priority, block.order)
-    block.parentInnerBorderStyle = CopyBorderStyle(block.parentInnerBorder, BorderPriority.block + block.priority, block.order)
-    block.parentInnerRowBorderStyle = CopyBorderStyle(block.parentInnerRowBorder, BorderPriority.block + block.priority, block.order)
-    block.parentInnerColBorderStyle = CopyBorderStyle(block.parentInnerColBorder, BorderPriority.block + block.priority, block.order)
+    block.borderStyle = CopyBorderStyle(block.border, BorderPriority.block + block.priority, block.order, block.layer)
+    block.innerBorderStyle = CopyBorderStyle(block.innerBorder, BorderPriority.block + block.priority, block.order, block.layer)
+    block.innerRowBorderStyle = CopyBorderStyle(block.innerRowBorder, BorderPriority.block + block.priority, block.order, block.layer)
+    block.innerColBorderStyle = CopyBorderStyle(block.innerColBorder, BorderPriority.block + block.priority, block.order, block.layer)
+    block.parentInnerBorderStyle = CopyBorderStyle(block.parentInnerBorder, BorderPriority.block + block.priority, block.order, block.layer)
+    block.parentInnerRowBorderStyle = CopyBorderStyle(block.parentInnerRowBorder, BorderPriority.block + block.priority, block.order, block.layer)
+    block.parentInnerColBorderStyle = CopyBorderStyle(block.parentInnerColBorder, BorderPriority.block + block.priority, block.order, block.layer)
     parent.colorBlocksById[id] = block
     return block
 end
@@ -554,7 +565,7 @@ local function DrawColorBlockBorders(parent)
 end
 
 local function StoreExplicitEdge(parent, cell, edge, rule, order)
-    local style = CopyBorderStyle(rule.style, rule.priority or BorderPriority.explicit, order)
+    local style = CopyBorderStyle(rule.style, rule.priority or BorderPriority.explicit, order, rule.layer)
     StoreGridLine(parent, GetCellEdgeLine(cell, edge), style)
 end
 
@@ -596,12 +607,14 @@ local function DrawCellBorderOverrides(parent)
                     seenCells[cell] = true
                     local border = cell.cellData and cell.cellData.border
                     if border ~= nil then
+                        local cellLayer = cell.cellData.sourceLayer or cell.cellData.layer
                         for _, edge in ipairs(edges) do
                             local edgeStyle = CellBorderEdgeStyle(border, edge)
                             if edgeStyle ~= nil then
                                 StoreExplicitEdge(parent, cell, edge, {
                                     style = edgeStyle,
                                     priority = CellBorderEdgePriority(border, edgeStyle),
+                                    layer = cellLayer,
                                 }, BorderPriority.cellOrder)
                             end
                         end

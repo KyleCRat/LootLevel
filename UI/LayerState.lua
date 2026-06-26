@@ -370,7 +370,7 @@ function NS:SetActiveLayer(layerKey, silent)
         self.db.activeLayers[layerSetKey] = normalized
     end
     self.db.activeLayer = normalized
-    if self.RefreshMainFrameLayout and layerSetKey and previousLayerSet ~= layerSetKey then
+    if self.RefreshMainFrameLayout and layerSetKey then
         self:RefreshMainFrameLayout()
     end
     if UI.ApplyActiveLayerBodyScrollDefaults then

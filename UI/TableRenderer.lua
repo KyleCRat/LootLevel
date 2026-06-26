@@ -7,6 +7,7 @@ local Cells = UI.Cells
 local BodyScroll = UI.BodyScroll
 local Borders = UI.Borders
 local Layers = UI.Layers
+local LayerResolver = UI.LayerResolver
 local TableGeometry = UI.TableGeometry
 local TableLayout = UI.TableLayout
 local TableRenderer = {}
@@ -41,14 +42,14 @@ local function BuildDataTableHeader(parent, tableDefinition, x, y)
     end
 end
 
-local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y, rowLayout, spanMap)
+local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y, rowLayout, spanMap, ownership)
     local tableKey = tableDefinition.key
     local colX = x
     for columnIndex, columnDefinition in ipairs(tableDefinition.columns or {}) do
         local coord = TableGeometry.ColumnCoord(columnDefinition, columnIndex, rowDefinition.row)
         local spanRecord = spanMap and spanMap[coord]
         if not spanRecord or spanRecord.anchorCoord == coord then
-            local data = spanRecord and spanRecord.cellData or Cells.GetConfiguredData(tableKey, coord) or {}
+            local data = spanRecord and spanRecord.cellData or Cells.GetConfiguredData(tableKey, coord, ownership) or {}
             local columnTitle = columnDefinition.title or TableGeometry.ColumnKey(columnDefinition, columnIndex)
             local width = columnDefinition.width
             local height = Metrics.rowHeight
@@ -72,15 +73,26 @@ local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y, r
     end
 end
 
-local function BuildDataTableRows(parent, tableDefinition, rows, x, y, rowLayout, spanMap)
+local function BuildDataTableRows(parent, tableDefinition, rows, x, y, rowLayout, spanMap, ownership)
     local visualRowIndex = 0
     for _, rowDefinition in ipairs(rows or {}) do
         if rowDefinition.marginRows then
             visualRowIndex = visualRowIndex + (tonumber(rowDefinition.marginRows) or 0)
         else
-            BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + (visualRowIndex * Metrics.rowHeight), rowLayout, spanMap)
+            BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + (visualRowIndex * Metrics.rowHeight), rowLayout, spanMap, ownership)
             visualRowIndex = visualRowIndex + 1
         end
+    end
+end
+
+local function BuildDataTableBodyBackdrop(parent, tableDefinition, height)
+    local x = 0
+    for _, columnDefinition in ipairs(tableDefinition.columns or {}) do
+        local backdrop = parent:CreateTexture(nil, "BACKGROUND")
+        UI.ApplyTexturePixelSnapping(backdrop)
+        backdrop:SetColorTexture(UI.Color(columnDefinition.bg or tableDefinition.bodyBg or tableDefinition.bg or "blank"))
+        UI.SetLayoutBounds(backdrop, parent, x, 0, columnDefinition.width, height)
+        x = x + columnDefinition.width
     end
 end
 
@@ -89,6 +101,7 @@ local function BuildDataTable(parent, tableDefinition, layout)
         return
     end
 
+    local tableKey = tableDefinition.key
     layout = layout or TableLayout.Measure(tableDefinition)
     local x = layout and layout.x or tableDefinition.x or 0
     local y = layout and layout.y or tableDefinition.y or 0
@@ -104,10 +117,12 @@ local function BuildDataTable(parent, tableDefinition, layout)
 
     local visibleRows = layout and layout.visibleRows or TableLayout.DisplayedBodyRows(tableDefinition, totalRows)
     local tableWidth = TableGeometry.TableWidth(tableDefinition)
-    local spanMap = TableGeometry.BuildTableSpanMap(tableDefinition, rowLayout)
+    local ownership = LayerResolver and LayerResolver.BuildTableOwnership(tableKey) or nil
+    local spanMap = TableGeometry.BuildTableSpanMap(tableDefinition, rowLayout, ownership)
     local bodyScroll, bodyContent = BodyScroll.Create(parent, tableDefinition, x, y + Metrics.headerHeight, tableWidth, visibleRows, totalRows)
     bodyScroll.bodyRowLayout = rowLayout
-    BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0, rowLayout, spanMap)
+    BuildDataTableBodyBackdrop(bodyContent, tableDefinition, math.max(1, totalRows * Metrics.rowHeight))
+    BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0, rowLayout, spanMap, ownership)
     UI.DrawGridLines(bodyContent)
     Borders.DrawTableBodyViewportBorder(bodyScroll, tableDefinition, tableWidth, visibleRows)
     BodyScroll.Clamp(bodyScroll)
@@ -181,6 +196,7 @@ end
 TableRenderer.BuildHeader = BuildDataTableHeader
 TableRenderer.BuildRow = BuildDataTableRow
 TableRenderer.BuildRows = BuildDataTableRows
+TableRenderer.BuildBodyBackdrop = BuildDataTableBodyBackdrop
 TableRenderer.BuildTable = BuildDataTable
 TableRenderer.BuildRegisteredTables = BuildRegisteredTables
 TableRenderer.BuildPlaceholders = BuildTablePlaceholders

@@ -263,10 +263,14 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
     cellRecordOrder = cellRecordOrder + 1
     cellsByTable[tableKey] = cellsByTable[tableKey] or {}
     local cellRecord = {
+        kind = "cell",
+        table = tableKey,
+        coord = cellCoordinate,
         text = cellDefinition.text or "",
         atlas = cellDefinition.atlas,
         bg = cellDefinition.bg,
         layer = cellDefinition.layer or blockDefinition.layer,
+        sourceLayer = cellDefinition.layer or blockDefinition.layer,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip,
         colTitle = cellDefinition.title,
         bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
@@ -314,7 +318,9 @@ local function RegisterMergedCell(blockDefinition, cellDefinition)
 
     cellRecordOrder = cellRecordOrder + 1
     local mergedCell = {
+        kind = "mergedCell",
         table = tableKey,
+        coord = span.fromCoord,
         startCoord = span.fromCoord,
         endCoord = span.toCoord,
         span = span,
@@ -322,6 +328,7 @@ local function RegisterMergedCell(blockDefinition, cellDefinition)
         atlas = cellDefinition.atlas,
         bg = cellDefinition.bg,
         layer = cellDefinition.layer or blockDefinition.layer,
+        sourceLayer = cellDefinition.layer or blockDefinition.layer,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip or DefaultTooltip(cellDefinition.text),
         colTitle = cellDefinition.title,
         bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),

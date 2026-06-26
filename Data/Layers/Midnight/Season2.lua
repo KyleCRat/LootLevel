@@ -24,7 +24,7 @@ Layer({
     buttonText = "S2",
     order = 20,
     active = true,
-    inactiveAlpha = 0.3,
+    inactiveAlpha = 0.1,
     bodyScroll = {
         ["midnight.raidActivity"] = { row = 14 },
     },

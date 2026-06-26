@@ -59,7 +59,8 @@ local function ApplyShellLayout(frame, shellLayout)
 end
 
 local function ActiveLayerSetCacheKey()
-    return Layers.GetActiveLayerSetKey() or "__default"
+    local state = Layers.CurrentLayerRenderState()
+    return state and state.key or Layers.GetActiveLayerSetKey() or "__default"
 end
 
 local function HideTableLayers(frame)

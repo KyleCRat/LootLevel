@@ -10,6 +10,7 @@ local Borders = UI.Borders
 local BodyScroll = UI.BodyScroll
 local Tooltips = UI.Tooltips
 local Layers = UI.Layers
+local LayerResolver = UI.LayerResolver
 local Cells = {}
 UI.Cells = Cells
 
@@ -17,7 +18,16 @@ local function MergeCellData(defaults, source)
     return Helpers.ShallowMerge(defaults, source)
 end
 
-local function GetConfiguredCellData(tableKey, coord)
+local function GetConfiguredCellData(tableKey, coord, ownership)
+    if LayerResolver then
+        ownership = ownership or LayerResolver.BuildTableOwnership(tableKey or "main")
+        local owner = LayerResolver.OwnerAt(ownership, coord)
+        if owner and owner.kind == "cell" then
+            return owner
+        end
+        return nil
+    end
+
     local tableCellRecords = NS.Data.cellRecords and NS.Data.cellRecords[tableKey or "main"]
     local records = tableCellRecords and tableCellRecords[coord]
     if records then

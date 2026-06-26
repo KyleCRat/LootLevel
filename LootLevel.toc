@@ -31,6 +31,7 @@ UI\PixelRoot.lua
 UI\GridLines.lua
 UI\LayerState.lua
 UI\CellStyles.lua
+UI\LayerResolver.lua
 UI\Borders.lua
 UI\RenderCache.lua
 UI\Tooltips.lua
