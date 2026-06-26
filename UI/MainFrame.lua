@@ -78,6 +78,7 @@ function NS:CreateMainFrame()
 
     UI.BuildRegisteredTables(content)
     UI.DrawGridLines(content)
+    UI.PrewarmLayerRenderCaches()
     UI.BuildFooter(frame)
 
     self.frame = frame

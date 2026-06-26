@@ -43,6 +43,8 @@ local DEFAULT_INACTIVE_LAYER_ALPHA = 0.3
 
 local Color
 local TextColorFor
+local layerRenderContext
+local RenderCache = {}
 
 local function Pixel(value)
     value = value or 0
@@ -178,25 +180,6 @@ local function RegisterLayoutRecord(record)
     NS.layoutRecords = NS.layoutRecords or {}
     NS.layoutRecords[#NS.layoutRecords + 1] = record
     ApplyLayoutRecord(record)
-end
-
-local function RemoveLayoutRecordsForOwner(owner)
-    if not owner or not NS.layoutRecords then
-        return
-    end
-
-    local writeIndex = 1
-    for readIndex = 1, #NS.layoutRecords do
-        local record = NS.layoutRecords[readIndex]
-        if record and record.owner ~= owner then
-            NS.layoutRecords[writeIndex] = record
-            writeIndex = writeIndex + 1
-        end
-    end
-
-    for index = writeIndex, #NS.layoutRecords do
-        NS.layoutRecords[index] = nil
-    end
 end
 
 local function RegisterFontRecord(record)
@@ -427,7 +410,6 @@ local function ReleaseGridOverlayLines(overlay)
         return
     end
 
-    RemoveLayoutRecordsForOwner(overlay)
     overlay.linePool = overlay.linePool or {}
 
     for _, texture in ipairs(overlay.lines or {}) do
@@ -442,13 +424,75 @@ end
 local function RegisterGridLineTexture(overlay, line)
     local texture = AcquireGridLineTexture(overlay)
     texture:SetColorTexture(GRID_COLOR[1], GRID_COLOR[2], GRID_COLOR[3], line.alpha or GRID_COLOR[4])
-    RegisterLayoutRecord({
-        kind = "gridline",
-        region = texture,
-        owner = overlay,
-        relativeTo = overlay,
-        line = line,
-    })
+    if texture.layoutRecord then
+        texture.layoutRecord.relativeTo = overlay
+        texture.layoutRecord.line = line
+        ApplyLayoutRecord(texture.layoutRecord)
+    else
+        texture.layoutRecord = {
+            kind = "gridline",
+            region = texture,
+            owner = overlay,
+            relativeTo = overlay,
+            line = line,
+        }
+        RegisterLayoutRecord(texture.layoutRecord)
+    end
+end
+
+local function CopyGridLine(line)
+    local copy = {}
+    for key, value in pairs(line or {}) do
+        copy[key] = value
+    end
+
+    return copy
+end
+
+local function AddPatternedGridLineSegments(lines, line, segmentLength, segmentGap)
+    local length
+    if line.vertical then
+        length = line.y2 - line.y1
+    else
+        length = line.x2 - line.x1
+    end
+
+    local offset = 0
+    while offset < length do
+        local segmentEnd = math.min(offset + segmentLength, length)
+        local segmentLine = CopyGridLine(line)
+
+        if line.vertical then
+            segmentLine.y1 = line.y1 + offset
+            segmentLine.y2 = line.y1 + segmentEnd
+        else
+            segmentLine.x1 = line.x1 + offset
+            segmentLine.x2 = line.x1 + segmentEnd
+        end
+
+        segmentLine.style = "solid"
+        lines[#lines + 1] = segmentLine
+        offset = offset + segmentLength + segmentGap
+    end
+end
+
+local function AddGridLineRenderSegments(lines, line)
+    if line.style == "dotted" then
+        AddPatternedGridLineSegments(lines, line, DOTTED_GRID_DOT, DOTTED_GRID_GAP)
+    elseif line.style == "dashed" then
+        AddPatternedGridLineSegments(lines, line, DASHED_GRID_DASH, DASHED_GRID_GAP)
+    else
+        lines[#lines + 1] = CopyGridLine(line)
+    end
+end
+
+local function BuildGridLineRenderSegments(gridLines)
+    local lines = {}
+    for _, line in pairs(gridLines or {}) do
+        AddGridLineRenderSegments(lines, line)
+    end
+
+    return lines
 end
 
 local function RegisterPatternedGridLine(overlay, line, segmentLength, segmentGap)
@@ -995,6 +1039,10 @@ local function GetLayerSetDefaultLayer(layerSetKey)
 end
 
 local function GetActiveLayerSetKey()
+    if layerRenderContext and layerRenderContext.activeLayerSet then
+        return layerRenderContext.activeLayerSet
+    end
+
     local configured = NormalizeLayerSetKey(NS.db and NS.db.activeLayerSet)
     if configured then
         return configured
@@ -1016,6 +1064,13 @@ end
 
 local function GetActiveLayerKey(layerSetKey)
     layerSetKey = NormalizeLayerSetKey(layerSetKey) or layerSetKey or GetActiveLayerSetKey()
+
+    if layerRenderContext and layerRenderContext.activeLayers and layerSetKey then
+        local contextualLayer = NormalizeLayerKey(layerRenderContext.activeLayers[layerSetKey])
+        if contextualLayer and LayerBelongsToSet(contextualLayer, layerSetKey) then
+            return contextualLayer
+        end
+    end
 
     local activeLayers = NS.db and NS.db.activeLayers
     if type(activeLayers) == "table" and layerSetKey then
@@ -1043,6 +1098,58 @@ local function GetActiveLayerKey(layerSetKey)
     end
 
     return nil
+end
+
+local function LayerRenderStateKey(state)
+    state = state or {}
+    return ("%s:%s"):format(tostring(state.activeLayerSet or ""), tostring(state.activeLayer or ""))
+end
+
+local function CurrentLayerRenderState()
+    local activeLayerSet = GetActiveLayerSetKey()
+    local activeLayer = GetActiveLayerKey(activeLayerSet)
+    return {
+        key = LayerRenderStateKey({
+            activeLayerSet = activeLayerSet,
+            activeLayer = activeLayer,
+        }),
+        activeLayerSet = activeLayerSet,
+        activeLayer = activeLayer,
+        activeLayers = {
+            [activeLayerSet or ""] = activeLayer,
+        },
+    }
+end
+
+local function ForEachLayerRenderState(callback)
+    if type(callback) ~= "function" then
+        return
+    end
+
+    local seen = {}
+    for _, layerSet in ipairs((NS.Data and NS.Data.layerSetOrder) or {}) do
+        local layerSetKey = layerSet.key or layerSet.id
+        for _, layer in ipairs(layerSet.layerOrder or {}) do
+            local layerKey = layer.key or layer.id
+            local state = {
+                activeLayerSet = layerSetKey,
+                activeLayer = layerKey,
+                activeLayers = {
+                    [layerSetKey or ""] = layerKey,
+                },
+            }
+            state.key = LayerRenderStateKey(state)
+            if not seen[state.key] then
+                seen[state.key] = true
+                callback(state)
+            end
+        end
+    end
+
+    local currentState = CurrentLayerRenderState()
+    if currentState.key and not seen[currentState.key] then
+        callback(currentState)
+    end
 end
 
 local function IsLayerActive(layerKey)
@@ -1211,14 +1318,14 @@ local function ResolveCellVisualAlpha(cellData)
     return Clamp(alpha, 0, 1)
 end
 
-local function ApplyCellResolvedStyle(cell)
+local function ApplyCellVisualStyle(cell, bg, alpha)
     local cellData = cell and cell.cellData
     if not cellData then
         return
     end
 
-    local bg = ResolveCellBackgroundColor(cellData)
-    local alpha = ResolveCellVisualAlpha(cellData)
+    bg = bg or "blank"
+    alpha = Clamp(tonumber(alpha) or 1, 0, 1)
     cellData.resolvedBg = bg
     cellData.resolvedAlpha = alpha
 
@@ -1231,6 +1338,15 @@ local function ApplyCellResolvedStyle(cell)
     if cell.SetAlpha then
         cell:SetAlpha(alpha)
     end
+end
+
+local function ApplyCellResolvedStyle(cell)
+    local cellData = cell and cell.cellData
+    if not cellData then
+        return
+    end
+
+    ApplyCellVisualStyle(cell, ResolveCellBackgroundColor(cellData), ResolveCellVisualAlpha(cellData))
 end
 
 local function AssignCellToBlock(parent, cell, block)
@@ -1677,7 +1793,7 @@ local function ForEachRegisteredGridCell(parent, callback)
     end
 end
 
-local function ResetGridParentRendering(parent)
+function RenderCache.ClearParent(parent, applyVisuals)
     if not parent then
         return
     end
@@ -1687,11 +1803,6 @@ local function ResetGridParentRendering(parent)
     parent.colorBlocksById = {}
     parent.gridLines = {}
     parent.gridLineBlocks = {}
-
-    if parent.gridOverlay then
-        ReleaseGridOverlayLines(parent.gridOverlay)
-        parent.gridOverlay:Hide()
-    end
 
     ForEachRegisteredGridCell(parent, function(cell)
         local cellData = cell.cellData
@@ -1704,17 +1815,111 @@ local function ResetGridParentRendering(parent)
                 cellData.styleLayers.block = nil
             end
         end
-        ApplyCellResolvedStyle(cell)
+        if applyVisuals ~= false then
+            ApplyCellResolvedStyle(cell)
+        end
     end)
 end
 
-local function DrawGridLines(parent)
-    if parent.gridOverlay and parent.gridOverlay:IsShown() then
+function RenderCache.CaptureCells(parent)
+    local cells = {}
+
+    ForEachRegisteredGridCell(parent, function(cell)
+        local cellData = cell.cellData
+        if cellData and cell.coordKey then
+            cells[cell.coordKey] = {
+                block = cellData.block,
+                layer = cellData.layer,
+                layerName = cellData.layerName,
+                bg = cellData.resolvedBg or ResolveCellBackgroundColor(cellData),
+                alpha = cellData.resolvedAlpha or ResolveCellVisualAlpha(cellData),
+            }
+        end
+    end)
+
+    return cells
+end
+
+function RenderCache.CopyBlockMap(blockByCoord)
+    local copy = {}
+    for coordKey, block in pairs(blockByCoord or {}) do
+        copy[coordKey] = block
+    end
+
+    return copy
+end
+
+function RenderCache.BuildParent(parent, state)
+    local previousContext = layerRenderContext
+    layerRenderContext = state
+
+    RenderCache.ClearParent(parent, true)
+    BuildBorderGrid(parent)
+
+    local cache = {
+        key = state and state.key,
+        blockByCoord = RenderCache.CopyBlockMap(parent.blockByCoord),
+        cells = RenderCache.CaptureCells(parent),
+        gridLines = BuildGridLineRenderSegments(parent.gridLines),
+    }
+
+    layerRenderContext = previousContext
+    return cache
+end
+
+function RenderCache.GetParent(parent, state)
+    if not parent then
+        return nil
+    end
+
+    state = state or CurrentLayerRenderState()
+    local key = state.key or LayerRenderStateKey(state)
+    parent.renderCaches = parent.renderCaches or {}
+    if not parent.renderCaches[key] then
+        state.key = key
+        parent.renderCaches[key] = RenderCache.BuildParent(parent, state)
+    end
+
+    return parent.renderCaches[key]
+end
+
+function RenderCache.ApplyParent(parent, cache)
+    if not parent or not cache then
+        return
+    end
+
+    parent.blocksApplied = true
+    parent.blockByCoord = RenderCache.CopyBlockMap(cache.blockByCoord)
+    parent.gridLines = cache.gridLines or {}
+    parent.gridLineBlocks = {}
+
+    ForEachRegisteredGridCell(parent, function(cell)
+        local cellData = cell.cellData
+        local state = cell.coordKey and cache.cells and cache.cells[cell.coordKey] or nil
+        if cellData then
+            cellData.block = state and state.block or nil
+            cellData.layer = state and state.layer or nil
+            cellData.layerName = state and state.layerName or nil
+            if cellData.styleLayers then
+                cellData.styleLayers.layer = nil
+                cellData.styleLayers.block = nil
+            end
+        end
+
+        if state then
+            ApplyCellVisualStyle(cell, state.bg, state.alpha)
+        else
+            ApplyCellResolvedStyle(cell)
+        end
+    end)
+end
+
+function RenderCache.RenderLines(parent, lines)
+    if not parent then
         return
     end
 
     RegisterGridParent(parent)
-    BuildBorderGrid(parent)
 
     local overlay = parent.gridOverlay
     if not overlay then
@@ -1728,9 +1933,37 @@ local function DrawGridLines(parent)
     overlay:SetFrameLevel(parent:GetFrameLevel() + 100)
     overlay:Show()
 
-    for _, line in pairs(parent.gridLines) do
-        RegisterStyledGridLine(overlay, line)
+    for _, line in ipairs(lines or {}) do
+        RegisterGridLineTexture(overlay, line)
     end
+end
+
+function RenderCache.RefreshParent(parent, state)
+    local cache = RenderCache.GetParent(parent, state or CurrentLayerRenderState())
+    RenderCache.ApplyParent(parent, cache)
+    RenderCache.RenderLines(parent, cache and cache.gridLines)
+end
+
+function RenderCache.Prewarm()
+    local currentState = CurrentLayerRenderState()
+
+    ForEachLayerRenderState(function(state)
+        for _, parent in ipairs(NS.gridParents or {}) do
+            RenderCache.GetParent(parent, state)
+        end
+    end)
+
+    for _, parent in ipairs(NS.gridParents or {}) do
+        RenderCache.RefreshParent(parent, currentState)
+    end
+end
+
+local function DrawGridLines(parent)
+    if parent.gridOverlay and parent.gridOverlay:IsShown() then
+        return
+    end
+
+    RenderCache.RefreshParent(parent)
 end
 
 local function DrawTableBodyViewportBorder(scroll, tableDefinition, width, visibleRows)
@@ -1897,6 +2130,9 @@ NS.UI.GetPixelRoot = GetPixelRoot
 NS.UI.SnapFramePosition = SnapFramePosition
 NS.UI.LayerDisplayName = LayerDisplayName
 NS.UI.LayerSetDisplayName = LayerSetDisplayName
+NS.UI.PrewarmLayerRenderCaches = function()
+    RenderCache.Prewarm()
+end
 
 local function BuildTooltipLines(cellData, fallbackLabel)
     local tooltip = cellData.tooltip
@@ -2595,8 +2831,7 @@ end
 
 function NS:RefreshLayerRendering()
     for _, parent in ipairs(self.gridParents or {}) do
-        ResetGridParentRendering(parent)
-        DrawGridLines(parent)
+        RenderCache.RefreshParent(parent)
     end
     if NS.UI.RefreshFooterText then
         NS.UI.RefreshFooterText()
