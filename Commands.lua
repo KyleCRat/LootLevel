@@ -58,21 +58,40 @@ local COMMANDS = {
         func = function(args)
             args = strtrim(args or "")
             if args == "" or args == "list" then
+                local activeLayerSet = NS.GetActiveLayerSetKey and NS:GetActiveLayerSetKey() or nil
                 for _, layer in ipairs((NS.Data and NS.Data.layerOrder) or {}) do
                     local key = layer.key or layer.id
                     local label = layer.name or key
                     local layerSet = layer.layerSet
                     local activeLayer = NS.GetActiveLayerKey and NS:GetActiveLayerKey(layerSet) or nil
-                    local marker = key == activeLayer and "active" or "inactive"
+                    local marker = key == activeLayer and layerSet == activeLayerSet and "active" or "inactive"
                     local setLabel = layerSet and (" [" .. layerSet .. "]") or ""
                     NS:Print(("Layer %s%s - %s (%s)"):format(key, setLabel, label, marker))
                 end
                 return
             end
 
-            if NS.SetActiveLayer then
-                NS:SetActiveLayer(args)
+            NS:SetActiveLayer(args)
+        end,
+    },
+    {
+        triggers = { "layerset", "expansion", "xpac" },
+        name = "Layer Set",
+        description = "Show or set the active layer set",
+        func = function(args)
+            args = strtrim(args or "")
+            if args == "" or args == "list" then
+                local activeLayerSet = NS.GetActiveLayerSetKey and NS:GetActiveLayerSetKey() or nil
+                for _, layerSet in ipairs((NS.Data and NS.Data.layerSetOrder) or {}) do
+                    local key = layerSet.key or layerSet.id
+                    local label = layerSet.name or key
+                    local marker = key == activeLayerSet and "active" or "inactive"
+                    NS:Print(("Layer set %s - %s (%s)"):format(key, label, marker))
+                end
+                return
             end
+
+            NS:SetActiveLayerSet(args)
         end,
     },
 }

@@ -28,6 +28,17 @@ local SCALE_MIN_PERCENT = 50
 local SCALE_MAX_PERCENT = 200
 local SCALE_STEP_PERCENT = 5
 local SCALE_DEFAULT_PERCENT = 100
+local LayerSelector = {
+    topOffset = -42,
+    x = -1,
+    subX = 8,
+    width = 42,
+    height = 28,
+    subWidth = 34,
+    subHeight = 24,
+    gap = 3,
+    groupGap = 7,
+}
 
 local MERGED_VERTICAL_LABEL_NUDGE_X = -6
 local MERGED_VERTICAL_LABEL_NUDGE_Y = 7
@@ -919,6 +930,11 @@ local function LayerDisplayName(layerKey)
     return layer and (layer.name or layer.key or layer.id) or layerKey
 end
 
+local function LayerSetDisplayName(layerSetKey)
+    local layerSet = LayerSetData(layerSetKey)
+    return layerSet and (layerSet.name or layerSet.key or layerSet.id) or layerSetKey
+end
+
 local function LayerBelongsToSet(layerKey, layerSetKey)
     if not layerSetKey then
         return true
@@ -937,8 +953,28 @@ local function GetLayerSetDefaultLayer(layerSetKey)
     return NormalizeLayerKey(defaultLayer)
 end
 
+local function GetActiveLayerSetKey()
+    local configured = NormalizeLayerSetKey(NS.db and NS.db.activeLayerSet)
+    if configured then
+        return configured
+    end
+
+    local legacyLayer = NormalizeLayerKey(NS.db and NS.db.activeLayer)
+    local legacyLayerSet = LayerSetKeyForLayer(legacyLayer)
+    if legacyLayerSet then
+        return legacyLayerSet
+    end
+
+    return DefaultLayerSetKey()
+end
+
+local function IsLayerSetActive(layerSetKey)
+    local normalized = NormalizeLayerSetKey(layerSetKey) or layerSetKey
+    return normalized ~= nil and normalized == GetActiveLayerSetKey()
+end
+
 local function GetActiveLayerKey(layerSetKey)
-    layerSetKey = NormalizeLayerSetKey(layerSetKey) or layerSetKey
+    layerSetKey = NormalizeLayerSetKey(layerSetKey) or layerSetKey or GetActiveLayerSetKey()
 
     local activeLayers = NS.db and NS.db.activeLayers
     if type(activeLayers) == "table" and layerSetKey then
@@ -1007,6 +1043,11 @@ end
 
 local function IsLayerVisible(layerKey)
     local layer = LayerData(layerKey)
+    local layerSetKey = LayerSetKeyForLayer(layerKey)
+    if layer and layerSetKey and not IsLayerSetActive(layerSetKey) then
+        return false
+    end
+
     return not layer or layer.visible ~= false or IsLayerActive(layerKey)
 end
 
@@ -2481,15 +2522,173 @@ local function LayerFooterText(layer, side)
 end
 
 local function ActiveFooterRightText()
-    local layerSetKey = DefaultLayerSetKey()
+    local layerSetKey = GetActiveLayerSetKey()
+    local layerSet = LayerSetData(layerSetKey)
     local activeLayer = LayerData(GetActiveLayerKey(layerSetKey))
-    return LayerFooterText(activeLayer, "right") or NS.Data.footerRight or ""
+    return LayerFooterText(activeLayer, "right") or LayerFooterText(layerSet, "right") or NS.Data.footerRight or ""
 end
 
 local function RefreshFooterText()
     if NS.footerRightText then
         NS.footerRightText:SetText(ActiveFooterRightText())
     end
+end
+
+function LayerSelector.Abbreviate(text)
+    text = tostring(text or ""):gsub("%s+", "")
+    if text == "" then
+        return "?"
+    end
+
+    return strupper(text:sub(1, 3))
+end
+
+function LayerSelector.LayerSetButtonText(layerSet)
+    return layerSet and (layerSet.buttonText or layerSet.shortName or LayerSelector.Abbreviate(layerSet.name or layerSet.key))
+        or "?"
+end
+
+function LayerSelector.LayerButtonText(layer)
+    if not layer then
+        return "?"
+    end
+
+    if layer.buttonText or layer.shortName then
+        return layer.buttonText or layer.shortName
+    end
+
+    local season = tostring(layer.name or ""):match("[Ss]eason%s*(%d+)")
+    if season then
+        return "S" .. season
+    end
+
+    return LayerSelector.Abbreviate(layer.name or layer.key)
+end
+
+function LayerSelector.ApplyButtonState(button, selected, enabled)
+    if not button then
+        return
+    end
+
+    enabled = enabled ~= false
+    button:SetAlpha(enabled and 1 or 0.55)
+
+    if button.SetBackdrop then
+        if selected then
+            button:SetBackdropColor(0.10, 0.42, 0.32, 0.98)
+            button:SetBackdropBorderColor(0.26, 0.86, 0.60, 1)
+        else
+            button:SetBackdropColor(0.13, 0.13, 0.13, 0.96)
+            button:SetBackdropBorderColor(0, 0, 0, 1)
+        end
+    end
+
+    if button.label then
+        if selected or enabled then
+            button.label:SetTextColor(Color("white"))
+        else
+            button.label:SetTextColor(Color("muted"))
+        end
+    end
+end
+
+function LayerSelector.Refresh()
+    local activeLayerSet = GetActiveLayerSetKey()
+
+    for _, record in ipairs(NS.layerSetButtons or {}) do
+        LayerSelector.ApplyButtonState(record.button, record.layerSetKey == activeLayerSet, true)
+    end
+
+    for _, record in ipairs(NS.layerButtons or {}) do
+        local layerSetActive = record.layerSetKey == activeLayerSet
+        local activeLayer = GetActiveLayerKey(record.layerSetKey)
+        LayerSelector.ApplyButtonState(record.button, layerSetActive and record.layerKey == activeLayer, layerSetActive)
+    end
+end
+
+function LayerSelector.ShowTooltip(owner, title, line)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    GameTooltip:SetText(title or "", 1, 1, 1)
+    if line then
+        GameTooltip:AddLine(line, 0.85, 0.85, 0.85, true)
+    end
+    GameTooltip:Show()
+end
+
+function LayerSelector.CreateButton(parent, text, width, height)
+    local button = CreateFrame("Button", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
+    SetLayoutSize(button, width, height)
+
+    if button.SetBackdrop then
+        button:SetBackdrop(FRAME_BACKDROP)
+        button:SetBackdropColor(0.13, 0.13, 0.13, 0.96)
+        button:SetBackdropBorderColor(0, 0, 0, 1)
+    end
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    ApplyTexturePixelSnapping(highlight)
+    highlight:SetAllPoints()
+    highlight:SetColorTexture(1, 1, 1, 0.16)
+
+    local label = CreateText(button, text, { size = 10 }, "white", "CENTER", "MIDDLE", true)
+    SetLayoutBox(label, "CENTER", button, "CENTER", 0, 0, width - 4, height - 4)
+    button.label = label
+
+    return button
+end
+
+function LayerSelector.CreateButtons(parent)
+    NS.layerSetButtons = {}
+    NS.layerButtons = {}
+
+    local y = LayerSelector.topOffset
+    for _, layerSet in ipairs((NS.Data and NS.Data.layerSetOrder) or {}) do
+        local layerSetKey = layerSet.key or layerSet.id
+        local setButton = LayerSelector.CreateButton(parent, LayerSelector.LayerSetButtonText(layerSet), LayerSelector.width, LayerSelector.height)
+        SetLayoutBox(setButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.x, y, LayerSelector.width, LayerSelector.height)
+        setButton:SetScript("OnClick", function()
+            NS:SetActiveLayerSet(layerSetKey, true)
+        end)
+        setButton:SetScript("OnEnter", function(self)
+            LayerSelector.ShowTooltip(self, LayerSetDisplayName(layerSetKey), "Select expansion.")
+        end)
+        setButton:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+
+        NS.layerSetButtons[#NS.layerSetButtons + 1] = {
+            button = setButton,
+            layerSetKey = layerSetKey,
+        }
+
+        y = y - LayerSelector.height - LayerSelector.gap
+        for _, layer in ipairs(layerSet.layerOrder or {}) do
+            local layerKey = layer.key or layer.id
+            local layerButton = LayerSelector.CreateButton(parent, LayerSelector.LayerButtonText(layer), LayerSelector.subWidth, LayerSelector.subHeight)
+            SetLayoutBox(layerButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.subX, y, LayerSelector.subWidth, LayerSelector.subHeight)
+            layerButton:SetScript("OnClick", function()
+                NS:SetActiveLayer(layerKey, true)
+            end)
+            layerButton:SetScript("OnEnter", function(self)
+                LayerSelector.ShowTooltip(self, LayerDisplayName(layerKey), LayerSetDisplayName(layerSetKey))
+            end)
+            layerButton:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+
+            NS.layerButtons[#NS.layerButtons + 1] = {
+                button = layerButton,
+                layerSetKey = layerSetKey,
+                layerKey = layerKey,
+            }
+
+            y = y - LayerSelector.subHeight - LayerSelector.gap
+        end
+
+        y = y - LayerSelector.groupGap
+    end
+
+    LayerSelector.Refresh()
 end
 
 local function BuildFooter(parent)
@@ -2582,15 +2781,49 @@ function NS:GetActiveLayerKey(layerSetKey)
     return GetActiveLayerKey(layerSetKey)
 end
 
+function NS:GetActiveLayerSetKey()
+    return GetActiveLayerSetKey()
+end
+
 function NS:RefreshLayerRendering()
     for _, parent in ipairs(self.gridParents or {}) do
         ResetGridParentRendering(parent)
         DrawGridLines(parent)
     end
     RefreshFooterText()
+    LayerSelector.Refresh()
 end
 
-function NS:SetActiveLayer(layerKey)
+function NS:SetActiveLayerSet(layerSetKey, silent)
+    local normalized = NormalizeLayerSetKey(layerSetKey)
+    if not normalized then
+        self:Print(("Unknown layer set: %s"):format(tostring(layerSetKey or "")))
+        return false
+    end
+
+    if not self.db then
+        return false
+    end
+
+    self.db.activeLayerSet = normalized
+    if type(self.db.activeLayers) ~= "table" then
+        self.db.activeLayers = {}
+    end
+
+    local activeLayer = GetActiveLayerKey(normalized)
+    if activeLayer then
+        self.db.activeLayers[normalized] = activeLayer
+        self.db.activeLayer = activeLayer
+    end
+
+    self:RefreshLayerRendering()
+    if not silent then
+        self:Print(("Active layer set: %s"):format(LayerSetDisplayName(normalized)))
+    end
+    return true
+end
+
+function NS:SetActiveLayer(layerKey, silent)
     local normalized = NormalizeLayerKey(layerKey)
     if not normalized then
         self:Print(("Unknown layer: %s"):format(tostring(layerKey or "")))
@@ -2606,11 +2839,14 @@ function NS:SetActiveLayer(layerKey)
         self.db.activeLayers = {}
     end
     if layerSetKey then
+        self.db.activeLayerSet = layerSetKey
         self.db.activeLayers[layerSetKey] = normalized
     end
     self.db.activeLayer = normalized
     self:RefreshLayerRendering()
-    self:Print(("Active layer: %s"):format(LayerDisplayName(normalized)))
+    if not silent then
+        self:Print(("Active layer: %s"):format(LayerDisplayName(normalized)))
+    end
     return true
 end
 
@@ -2704,6 +2940,7 @@ function NS:CreateMainFrame()
     end)
 
     CreateScaleButton(frame)
+    LayerSelector.CreateButtons(frame)
 
     local content = CreateFrame("Frame", nil, frame)
     SetLayoutBox(content, "TOPLEFT", frame, "TOPLEFT", PADDING, -(TITLE_HEIGHT + 8), FRAME_WIDTH - (PADDING * 2), FRAME_HEIGHT - TITLE_HEIGHT - 42)
