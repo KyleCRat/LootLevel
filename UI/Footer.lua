@@ -52,9 +52,14 @@ function UI.BuildFooter(parent)
     }, nil, 22)
 
     local left = UI.CreateText(footer, NS.Data.footerLeft, { size = 12 }, "white", "LEFT", "MIDDLE", false)
-    UI.SetLayoutBox(left, "LEFT", footer, "LEFT", 0, 0, 720, 20)
+    UI.SetLayoutPoints(left, {
+        { point = "LEFT", relativeTo = footer, relativePoint = "LEFT", x = 0, y = 0 },
+        { point = "RIGHT", relativeTo = footer, relativePoint = "RIGHT", x = -420, y = 0 },
+    }, nil, 20)
 
     local right = UI.CreateText(footer, ActiveFooterRightText(), { size = 12 }, "white", "RIGHT", "MIDDLE", false)
     UI.SetLayoutBox(right, "RIGHT", footer, "RIGHT", 0, 0, 410, 20)
     NS.footerRightText = right
+    NS.footerFrame = footer
+    return footer
 end

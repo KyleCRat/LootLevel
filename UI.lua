@@ -22,6 +22,7 @@ local FRAME_WIDTH = 1180
 local FRAME_HEIGHT = 760
 local PADDING = 14
 local TITLE_HEIGHT = 28
+local FOOTER_HEIGHT = 22
 local HEADER_HEIGHT = 24
 local ROW_HEIGHT = 24
 local SCALE_MIN_PERCENT = 50
@@ -50,6 +51,7 @@ local ScaleLayout = {
     serial = 0,
 }
 local RenderCache = {}
+local TableLayout = {}
 
 local function Pixel(value)
     value = value or 0
@@ -192,6 +194,7 @@ local function RegisterLayoutRecord(record)
     NS.layoutRecords = NS.layoutRecords or {}
     NS.layoutRecords[#NS.layoutRecords + 1] = record
     ApplyLayoutRecord(record)
+    return record
 end
 
 local function RegisterFontRecord(record)
@@ -204,10 +207,11 @@ local function RegisterFontRecord(record)
     NS.layoutFonts = NS.layoutFonts or {}
     NS.layoutFonts[#NS.layoutFonts + 1] = record
     ApplyFontRecord(record)
+    return record
 end
 
 local function SetLayoutBounds(region, relativeTo, x, y, width, height)
-    RegisterLayoutRecord({
+    return RegisterLayoutRecord({
         kind = "bounds",
         region = region,
         relativeTo = relativeTo,
@@ -219,7 +223,7 @@ local function SetLayoutBounds(region, relativeTo, x, y, width, height)
 end
 
 local function SetLayoutBox(region, point, relativeTo, relativePoint, x, y, width, height)
-    RegisterLayoutRecord({
+    return RegisterLayoutRecord({
         kind = "box",
         region = region,
         point = point,
@@ -233,7 +237,7 @@ local function SetLayoutBox(region, point, relativeTo, relativePoint, x, y, widt
 end
 
 local function SetLayoutSize(region, width, height)
-    RegisterLayoutRecord({
+    return RegisterLayoutRecord({
         kind = "size",
         region = region,
         width = width,
@@ -242,7 +246,7 @@ local function SetLayoutSize(region, width, height)
 end
 
 local function SetLayoutPoints(region, points, width, height)
-    RegisterLayoutRecord({
+    return RegisterLayoutRecord({
         kind = "points",
         region = region,
         points = points,
@@ -2196,6 +2200,7 @@ NS.UI.Metrics = {
     frameHeight = FRAME_HEIGHT,
     padding = PADDING,
     titleHeight = TITLE_HEIGHT,
+    footerHeight = FOOTER_HEIGHT,
 }
 NS.UI.Scale = {
     minPercent = SCALE_MIN_PERCENT,
@@ -2207,6 +2212,17 @@ NS.UI.CreateText = CreateText
 NS.UI.SetLayoutBox = SetLayoutBox
 NS.UI.SetLayoutSize = SetLayoutSize
 NS.UI.SetLayoutPoints = SetLayoutPoints
+NS.UI.UpdateLayoutRecord = function(record, values)
+    if not record or type(values) ~= "table" then
+        return record
+    end
+
+    for key, value in pairs(values) do
+        record[key] = value
+    end
+    ApplyLayoutRecord(record)
+    return record
+end
 NS.UI.ApplyTexturePixelSnapping = ApplyTexturePixelSnapping
 NS.UI.GetScalePercent = GetScalePercent
 NS.UI.FormatScalePercent = FormatScalePercent
@@ -2816,6 +2832,126 @@ local function DisplayedBodyRows(tableDefinition, totalRows)
     return math.min(totalRows, math.floor(displayedRows))
 end
 
+function TableLayout.Measure(tableDefinition)
+    if not tableDefinition or not tableDefinition.key then
+        return nil
+    end
+
+    local rows = CollectTableBodyRows(tableDefinition)
+    local rowLayout = BuildBodyRowLayout(rows)
+    local totalRows = rowLayout.totalRows or CountVisualRows(rows)
+    local visibleRows = totalRows > 0 and DisplayedBodyRows(tableDefinition, totalRows) or 0
+
+    return {
+        key = tableDefinition.key,
+        rows = rows,
+        rowLayout = rowLayout,
+        totalRows = totalRows,
+        visibleRows = visibleRows,
+        x = tableDefinition.x or 0,
+        y = tableDefinition.y or 0,
+        width = TableWidth(tableDefinition),
+        height = HEADER_HEIGHT + (visibleRows * ROW_HEIGHT),
+    }
+end
+
+function TableLayout.TableInLayerSet(tableDefinition, layerSetKey)
+    local tableLayerSet = tableDefinition and tableDefinition.layerSet
+    return not tableLayerSet or not layerSetKey or tableLayerSet == layerSetKey
+end
+
+function TableLayout.MeasureByKey(tableKey, layerSetKey)
+    local tableDefinition = type(tableKey) == "table" and tableKey or NS.Data and NS.Data.tables and NS.Data.tables[tableKey]
+    if not TableLayout.TableInLayerSet(tableDefinition, layerSetKey) then
+        return nil
+    end
+
+    return TableLayout.Measure(tableDefinition)
+end
+
+function TableLayout.GetLayoutDefinition(layerSetKey)
+    local layerSet = LayerSetData(layerSetKey)
+    local layoutKey = layerSet and (layerSet.layout or layerSet.layoutKey)
+    if not layoutKey and NS.Data then
+        layoutKey = NS.Data.defaultLayout
+    end
+
+    return layoutKey and NS.Data and NS.Data.layouts and NS.Data.layouts[layoutKey] or nil
+end
+
+function TableLayout.NormalizeBounds(layouts, layerSetKey)
+    local minX
+    local minY
+    local maxX
+    local maxY
+
+    for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
+        local tableKey = tableDefinition and tableDefinition.key
+        local layout = tableKey and layouts[tableKey]
+        if layout and TableLayout.TableInLayerSet(tableDefinition, layerSetKey) then
+            local x = layout.x or 0
+            local y = layout.y or 0
+            local right = x + (layout.width or 0)
+            local bottom = y + (layout.height or 0)
+
+            minX = minX and math.min(minX, x) or x
+            minY = minY and math.min(minY, y) or y
+            maxX = maxX and math.max(maxX, right) or right
+            maxY = maxY and math.max(maxY, bottom) or bottom
+        end
+    end
+
+    if not minX then
+        layouts.bounds = { x = 0, y = 0, width = 1, height = 1 }
+        return layouts
+    end
+
+    for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
+        local tableKey = tableDefinition and tableDefinition.key
+        local layout = tableKey and layouts[tableKey]
+        if layout and TableLayout.TableInLayerSet(tableDefinition, layerSetKey) then
+            layout.x = (layout.x or 0) - minX
+            layout.y = (layout.y or 0) - minY
+        end
+    end
+
+    layouts.bounds = {
+        x = 0,
+        y = 0,
+        width = math.max(1, (maxX or minX) - minX),
+        height = math.max(1, (maxY or minY) - minY),
+    }
+    return layouts
+end
+
+function TableLayout.Build()
+    local layerSetKey = GetActiveLayerSetKey()
+    local layoutDefinition = TableLayout.GetLayoutDefinition(layerSetKey)
+    local layouts = {}
+    local function measure(tableKey)
+        return TableLayout.MeasureByKey(tableKey, layerSetKey)
+    end
+
+    if layoutDefinition and type(layoutDefinition.apply) == "function" then
+        local appliedLayouts = layoutDefinition.apply(layouts, measure, {
+            headerHeight = HEADER_HEIGHT,
+            rowHeight = ROW_HEIGHT,
+        })
+        if type(appliedLayouts) == "table" then
+            layouts = appliedLayouts
+        end
+    end
+
+    for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
+        local tableKey = tableDefinition and tableDefinition.key
+        if tableKey and TableLayout.TableInLayerSet(tableDefinition, layerSetKey) and not layouts[tableKey] then
+            layouts[tableKey] = TableLayout.Measure(tableDefinition)
+        end
+    end
+
+    return TableLayout.NormalizeBounds(layouts, layerSetKey)
+end
+
 local function ClampScrollFrame(scroll)
     if not scroll then
         return
@@ -2867,16 +3003,17 @@ local function BuildDataTableRows(parent, tableDefinition, rows, x, y, rowLayout
     end
 end
 
-local function BuildDataTable(parent, tableDefinition)
+local function BuildDataTable(parent, tableDefinition, layout)
     if not tableDefinition or not tableDefinition.key then
         return
     end
 
-    local x = tableDefinition.x or 0
-    local y = tableDefinition.y or 0
-    local rows = CollectTableBodyRows(tableDefinition)
-    local rowLayout = BuildBodyRowLayout(rows)
-    local totalRows = rowLayout.totalRows or CountVisualRows(rows)
+    layout = layout or TableLayout.Measure(tableDefinition)
+    local x = layout and layout.x or tableDefinition.x or 0
+    local y = layout and layout.y or tableDefinition.y or 0
+    local rows = layout and layout.rows or CollectTableBodyRows(tableDefinition)
+    local rowLayout = layout and layout.rowLayout or BuildBodyRowLayout(rows)
+    local totalRows = layout and layout.totalRows or rowLayout.totalRows or CountVisualRows(rows)
     if totalRows <= 0 then
         BuildDataTableHeader(parent, tableDefinition, x, y)
         return
@@ -2884,7 +3021,7 @@ local function BuildDataTable(parent, tableDefinition)
 
     BuildDataTableHeader(parent, tableDefinition, x, y)
 
-    local visibleRows = DisplayedBodyRows(tableDefinition, totalRows)
+    local visibleRows = layout and layout.visibleRows or DisplayedBodyRows(tableDefinition, totalRows)
     local spanMap = BuildTableSpanMap(tableDefinition, rowLayout)
     local bodyScroll, bodyContent = CreateTableBodyScroll(parent, x, y + HEADER_HEIGHT, TableWidth(tableDefinition), visibleRows, totalRows)
     BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0, rowLayout, spanMap)
@@ -2893,15 +3030,22 @@ local function BuildDataTable(parent, tableDefinition)
     ClampScrollFrame(bodyScroll)
 end
 
-local function BuildRegisteredTables(parent)
+local function BuildRegisteredTables(parent, layouts)
+    layouts = layouts or TableLayout.Build()
+    local activeLayerSet = GetActiveLayerSetKey()
     for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
-        BuildDataTable(parent, tableDefinition)
+        if TableLayout.TableInLayerSet(tableDefinition, activeLayerSet) then
+            BuildDataTable(parent, tableDefinition, layouts[tableDefinition.key])
+        end
     end
 end
 
 NS.UI.BuildRegisteredTables = BuildRegisteredTables
 NS.UI.DrawGridLines = DrawGridLines
-NS.UI.BuildTablePlaceholders = function(parent)
+NS.UI.BuildTableLayout = function()
+    return TableLayout.Build()
+end
+NS.UI.BuildTablePlaceholders = function(parent, layouts)
     if not parent then
         return
     end
@@ -2911,9 +3055,11 @@ NS.UI.BuildTablePlaceholders = function(parent)
         placeholder:Hide()
     end
 
+    layouts = layouts or TableLayout.Build()
+    local activeLayerSet = GetActiveLayerSetKey()
     local index = 0
     for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
-        if tableDefinition and tableDefinition.key then
+        if tableDefinition and tableDefinition.key and TableLayout.TableInLayerSet(tableDefinition, activeLayerSet) then
             index = index + 1
 
             local placeholder = parent.placeholders[index]
@@ -2933,14 +3079,11 @@ NS.UI.BuildTablePlaceholders = function(parent)
                 parent.placeholders[index] = placeholder
             end
 
-            local rows = CollectTableBodyRows(tableDefinition)
-            local rowLayout = BuildBodyRowLayout(rows)
-            local totalRows = rowLayout.totalRows or CountVisualRows(rows)
-            local visibleRows = totalRows > 0 and DisplayedBodyRows(tableDefinition, totalRows) or 0
-            local x = tableDefinition.x or 0
-            local y = tableDefinition.y or 0
-            local width = TableWidth(tableDefinition)
-            local height = HEADER_HEIGHT + (visibleRows * ROW_HEIGHT)
+            local layout = layouts[tableDefinition.key] or TableLayout.Measure(tableDefinition)
+            local x = layout.x or tableDefinition.x or 0
+            local y = layout.y or tableDefinition.y or 0
+            local width = layout.width or TableWidth(tableDefinition)
+            local height = layout.height or HEADER_HEIGHT
 
             SetLayoutBounds(placeholder, parent, x, y, width, height)
             if not placeholder.headerLayoutRegistered then
@@ -2995,6 +3138,7 @@ function NS:SetActiveLayerSet(layerSetKey, silent)
         return false
     end
 
+    local previousLayerSet = GetActiveLayerSetKey()
     self.db.activeLayerSet = normalized
     if type(self.db.activeLayers) ~= "table" then
         self.db.activeLayers = {}
@@ -3006,6 +3150,9 @@ function NS:SetActiveLayerSet(layerSetKey, silent)
         self.db.activeLayer = activeLayer
     end
 
+    if self.RefreshMainFrameLayout and previousLayerSet ~= normalized then
+        self:RefreshMainFrameLayout()
+    end
     self:RefreshLayerRendering()
     if not silent then
         self:Print(("Active layer set: %s"):format(LayerSetDisplayName(normalized)))
@@ -3024,6 +3171,7 @@ function NS:SetActiveLayer(layerKey, silent)
         return false
     end
 
+    local previousLayerSet = GetActiveLayerSetKey()
     local layerSetKey = LayerSetKeyForLayer(normalized)
     if type(self.db.activeLayers) ~= "table" then
         self.db.activeLayers = {}
@@ -3033,6 +3181,9 @@ function NS:SetActiveLayer(layerKey, silent)
         self.db.activeLayers[layerSetKey] = normalized
     end
     self.db.activeLayer = normalized
+    if self.RefreshMainFrameLayout and layerSetKey and previousLayerSet ~= layerSetKey then
+        self:RefreshMainFrameLayout()
+    end
     self:RefreshLayerRendering()
     if not silent then
         self:Print(("Active layer: %s"):format(LayerDisplayName(normalized)))

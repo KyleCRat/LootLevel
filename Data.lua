@@ -24,6 +24,8 @@ local layerSetOrder = {}
 local layerSetsByKey = {}
 local layerSetByLayerKey = {}
 local defaultActiveLayers = {}
+local layoutOrder = {}
+local layoutsByKey = {}
 local layerOrder = {}
 local layersByKey = {}
 local blocks = {}
@@ -247,6 +249,7 @@ local function LayerSet(definition)
     definition.id = definition.id or key
     definition.order = tonumber(definition.order) or (#layerSetOrder + 1)
     definition.defaultLayer = definition.defaultLayer or definition.activeLayer or definition.default
+    definition.layout = definition.layout or definition.layoutKey
     definition.layers = {}
     definition.layerOrder = {}
 
@@ -283,6 +286,38 @@ local function LayerSet(definition)
     if NS.Data then
         NS.Data.defaultLayerSet = NS.DataDefaultLayerSet
         NS.Data.defaultActiveLayers = defaultActiveLayers
+    end
+
+    return definition
+end
+
+local function Layout(definition)
+    if not definition then
+        return nil
+    end
+
+    local key = definition.key or definition.id
+    if not key then
+        return nil
+    end
+
+    definition.key = key
+    definition.id = definition.id or key
+    definition.order = tonumber(definition.order) or (#layoutOrder + 1)
+
+    if not layoutsByKey[key] then
+        layoutOrder[#layoutOrder + 1] = definition
+    end
+
+    layoutsByKey[key] = definition
+    if not NS.DataDefaultLayout or definition.active or definition.defaultActive then
+        NS.DataDefaultLayout = key
+    end
+
+    if NS.Data then
+        NS.Data.defaultLayout = NS.DataDefaultLayout
+        NS.Data.layoutOrder = layoutOrder
+        NS.Data.layouts = layoutsByKey
     end
 
     return definition
@@ -508,6 +543,7 @@ end
 
 NS.DataAPI = {
     Table = Table,
+    Layout = Layout,
     LayerSet = LayerSet,
     Layer = Layer,
     Block = Block,
@@ -527,6 +563,9 @@ NS.Data = {
     layerSetOrder = layerSetOrder,
     layerSets = layerSetsByKey,
     layerSetByLayerKey = layerSetByLayerKey,
+    layoutOrder = layoutOrder,
+    layouts = layoutsByKey,
+    defaultLayout = NS.DataDefaultLayout,
     layerOrder = layerOrder,
     layers = layersByKey,
     defaultLayerSet = NS.DataDefaultLayerSet,

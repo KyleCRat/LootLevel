@@ -10,6 +10,7 @@ Libs\LibPopupSlider-1.0\LibPopupSlider-1.0.xml
 
 Core.lua
 Data.lua
+Data\Layouts.lua
 Data\Layers.lua
 Data\Dungeon.lua
 Data\Delve.lua

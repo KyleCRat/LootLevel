@@ -12,6 +12,7 @@ LayerSet({
     key = "midnight",
     name = "Midnight",
     buttonText = "MID",
+    layout = "midnight",
     active = true,
     defaultLayer = LayerKeys.MIDNIGHT_S2,
     layers = {

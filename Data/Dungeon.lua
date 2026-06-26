@@ -24,8 +24,6 @@ Table({
     key = TABLE_KEY,
     name = "Dungeon table",
     layerSet = "midnight",
-    x = 0,
-    y = 0,
     rowCount = 15,
     columns = {
         { col = "a", width = 60, title = "Level", bg = "light", bold = true },

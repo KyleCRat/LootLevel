@@ -3,6 +3,125 @@ local ADDON_NAME, NS = ...
 local UI = NS.UI
 local Metrics = UI.Metrics
 
+local function BuildShellLayout()
+    local tableLayout = UI.BuildTableLayout and UI.BuildTableLayout() or nil
+    local bounds = tableLayout and tableLayout.bounds or {}
+    local tableWidth = math.max(1, bounds.width or (Metrics.frameWidth - (Metrics.padding * 2)))
+    local tableHeight = math.max(1, bounds.height or (Metrics.frameHeight - Metrics.titleHeight - (Metrics.padding * 3) - Metrics.footerHeight))
+
+    return {
+        tableLayout = tableLayout,
+        frameWidth = tableWidth + (Metrics.padding * 2),
+        frameHeight = Metrics.titleHeight + Metrics.padding + tableHeight + Metrics.padding + Metrics.footerHeight + Metrics.padding,
+        contentX = Metrics.padding,
+        contentY = Metrics.titleHeight + Metrics.padding,
+        contentWidth = tableWidth,
+        contentHeight = tableHeight,
+    }
+end
+
+local function ApplyShellLayout(frame, shellLayout)
+    frame.shellLayoutRecords = frame.shellLayoutRecords or {}
+
+    if frame.shellLayoutRecords.frameSize then
+        UI.UpdateLayoutRecord(frame.shellLayoutRecords.frameSize, {
+            width = shellLayout.frameWidth,
+            height = shellLayout.frameHeight,
+        })
+    else
+        frame.shellLayoutRecords.frameSize = UI.SetLayoutSize(frame, shellLayout.frameWidth, shellLayout.frameHeight)
+    end
+
+    if frame.tableContent then
+        if frame.shellLayoutRecords.contentBox then
+            UI.UpdateLayoutRecord(frame.shellLayoutRecords.contentBox, {
+                x = shellLayout.contentX,
+                y = -shellLayout.contentY,
+                width = shellLayout.contentWidth,
+                height = shellLayout.contentHeight,
+            })
+        else
+            frame.shellLayoutRecords.contentBox = UI.SetLayoutBox(
+                frame.tableContent,
+                "TOPLEFT",
+                frame,
+                "TOPLEFT",
+                shellLayout.contentX,
+                -shellLayout.contentY,
+                shellLayout.contentWidth,
+                shellLayout.contentHeight
+            )
+        end
+    end
+
+    frame.shellLayout = shellLayout
+end
+
+local function ActiveLayerSetCacheKey()
+    return NS.GetActiveLayerSetKey and NS:GetActiveLayerSetKey() or "__default"
+end
+
+local function HideTableLayers(frame)
+    for _, tableLayer in pairs(frame.tableLayersByKey or {}) do
+        tableLayer:Hide()
+    end
+end
+
+local function EnsureActiveTableLayer(frame, shellLayout)
+    if not frame.tableContent then
+        return nil
+    end
+
+    local cacheKey = ActiveLayerSetCacheKey()
+    frame.tableLayersByKey = frame.tableLayersByKey or {}
+
+    local tableLayer = frame.tableLayersByKey[cacheKey]
+    if not tableLayer then
+        tableLayer = CreateFrame("Frame", nil, frame.tableContent)
+        tableLayer.deferScaleLayout = true
+        tableLayer:SetAllPoints(frame.tableContent)
+        tableLayer.cells = {}
+        frame.tableLayersByKey[cacheKey] = tableLayer
+
+        UI.WithDeferredScaleLayout(function()
+            UI.BuildRegisteredTables(tableLayer, shellLayout.tableLayout)
+            UI.DrawGridLines(tableLayer)
+            UI.PrewarmLayerRenderCaches()
+        end)
+    end
+
+    HideTableLayers(frame)
+    tableLayer:Show()
+    frame.cells = tableLayer.cells
+    NS.tableLayer = tableLayer
+    return tableLayer
+end
+
+local function RefreshPlaceholderLayer(frame, shellLayout)
+    if not frame.tableContent then
+        return nil
+    end
+
+    local placeholderLayer = NS.tablePlaceholderLayer
+    if not placeholderLayer then
+        placeholderLayer = CreateFrame("Frame", nil, frame.tableContent)
+        placeholderLayer:SetAllPoints(frame.tableContent)
+        placeholderLayer:Hide()
+        NS.tablePlaceholderLayer = placeholderLayer
+    end
+
+    UI.BuildTablePlaceholders(placeholderLayer, shellLayout.tableLayout)
+    return placeholderLayer
+end
+
+local function RefreshFrameShell(frame)
+    local shellLayout = BuildShellLayout()
+    ApplyShellLayout(frame, shellLayout)
+    EnsureActiveTableLayer(frame, shellLayout)
+    RefreshPlaceholderLayer(frame, shellLayout)
+    return shellLayout
+end
+
 function NS:CreateMainFrame()
     if self.frame then
         return self.frame
@@ -15,7 +134,6 @@ function NS:CreateMainFrame()
     self.layoutFonts = {}
     self.tableBodyScrolls = {}
     self.gridParents = {}
-    UI.SetLayoutSize(frame, Metrics.frameWidth, Metrics.frameHeight)
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)
     frame:SetMovable(true)
@@ -73,31 +191,24 @@ function NS:CreateMainFrame()
     UI.LayerSelector.CreateButtons(frame)
 
     local content = CreateFrame("Frame", nil, frame)
-    UI.SetLayoutBox(content, "TOPLEFT", frame, "TOPLEFT", Metrics.padding, -(Metrics.titleHeight + 8), Metrics.frameWidth - (Metrics.padding * 2), Metrics.frameHeight - Metrics.titleHeight - 42)
-    UI.WithDeferredScaleLayout(function()
-        local tableLayer = CreateFrame("Frame", nil, content)
-        tableLayer.deferScaleLayout = true
-        tableLayer:SetAllPoints(content)
-        tableLayer.cells = frame.cells
-        NS.tableLayer = tableLayer
-
-        UI.BuildRegisteredTables(tableLayer)
-        UI.DrawGridLines(tableLayer)
-        UI.PrewarmLayerRenderCaches()
-    end)
-
-    local placeholderLayer = CreateFrame("Frame", nil, content)
-    placeholderLayer:SetAllPoints(content)
-    placeholderLayer:Hide()
-    NS.tablePlaceholderLayer = placeholderLayer
-    UI.BuildTablePlaceholders(placeholderLayer)
+    frame.tableContent = content
 
     UI.BuildFooter(frame)
+    RefreshFrameShell(frame)
 
     self.frame = frame
     table.insert(UISpecialFrames, "LootLevelFrame")
 
     return frame
+end
+
+function NS:RefreshMainFrameLayout()
+    if not self.frame then
+        return
+    end
+
+    RefreshFrameShell(self.frame)
+    UI.SnapFramePosition(self.frame)
 end
 
 function NS:ShowMainFrame()

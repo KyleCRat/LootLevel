@@ -40,8 +40,6 @@ Table({
     key = TABLE_KEY,
     name = "Primary item level table",
     layerSet = "midnight",
-    x = 354,
-    y = 0,
     displayedRows = 28,
     columns = {
         { col = "a", width = 46, title = "Item level" },
