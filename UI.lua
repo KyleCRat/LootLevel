@@ -1107,6 +1107,16 @@ local function LayerSetDisplayName(layerSetKey)
     return layerSet and (layerSet.name or layerSet.key or layerSet.id) or layerSetKey
 end
 
+local function LayerSetLayoutKey(layerSetKey)
+    local layerSet = LayerSetData(layerSetKey)
+    local layoutKey = layerSet and (layerSet.layout or layerSet.layoutKey)
+    if not layoutKey and NS.Data then
+        layoutKey = NS.Data.defaultLayout
+    end
+
+    return layoutKey
+end
+
 local function LayerBelongsToSet(layerKey, layerSetKey)
     if not layerSetKey then
         return true
@@ -1142,11 +1152,6 @@ local function GetActiveLayerSetKey()
     end
 
     return DefaultLayerSetKey()
-end
-
-local function IsLayerSetActive(layerSetKey)
-    local normalized = NormalizeLayerSetKey(layerSetKey) or layerSetKey
-    return normalized ~= nil and normalized == GetActiveLayerSetKey()
 end
 
 local function GetActiveLayerKey(layerSetKey)
@@ -1185,6 +1190,12 @@ local function GetActiveLayerKey(layerSetKey)
     end
 
     return nil
+end
+
+local function LayerSetSharesActiveLayout(layerSetKey)
+    local activeLayout = LayerSetLayoutKey(GetActiveLayerSetKey())
+    local layoutKey = LayerSetLayoutKey(layerSetKey)
+    return activeLayout ~= nil and layoutKey == activeLayout
 end
 
 local function LayerRenderStateKey(state)
@@ -1240,8 +1251,10 @@ local function ForEachLayerRenderState(callback)
 end
 
 local function IsLayerActive(layerKey)
-    local activeLayer = GetActiveLayerKey(LayerSetKeyForLayer(layerKey))
-    return activeLayer ~= nil and layerKey ~= nil and layerKey == activeLayer
+    local activeLayerSet = GetActiveLayerSetKey()
+    local layerSetKey = LayerSetKeyForLayer(layerKey)
+    local activeLayer = GetActiveLayerKey(activeLayerSet)
+    return activeLayerSet ~= nil and layerSetKey == activeLayerSet and activeLayer ~= nil and layerKey ~= nil and layerKey == activeLayer
 end
 
 local function LayerRenderOrder(layerKey)
@@ -1264,8 +1277,8 @@ local function LayerVisualAlpha(layerKey)
         return 1
     end
 
-    local activeLayer = GetActiveLayerKey(LayerSetKeyForLayer(layerKey))
-    if not activeLayer then
+    local layerSetKey = LayerSetKeyForLayer(layerKey)
+    if not layerSetKey or not LayerSetSharesActiveLayout(layerSetKey) then
         return 1
     end
 
@@ -1279,7 +1292,7 @@ end
 local function IsLayerVisible(layerKey)
     local layer = LayerData(layerKey)
     local layerSetKey = LayerSetKeyForLayer(layerKey)
-    if layer and layerSetKey and not IsLayerSetActive(layerSetKey) then
+    if layer and layerSetKey and not LayerSetSharesActiveLayout(layerSetKey) then
         return false
     end
 
@@ -2855,31 +2868,37 @@ function TableLayout.Measure(tableDefinition)
     }
 end
 
-function TableLayout.TableInLayerSet(tableDefinition, layerSetKey)
-    local tableLayerSet = tableDefinition and tableDefinition.layerSet
-    return not tableLayerSet or not layerSetKey or tableLayerSet == layerSetKey
-end
-
-function TableLayout.MeasureByKey(tableKey, layerSetKey)
-    local tableDefinition = type(tableKey) == "table" and tableKey or NS.Data and NS.Data.tables and NS.Data.tables[tableKey]
-    if not TableLayout.TableInLayerSet(tableDefinition, layerSetKey) then
-        return nil
+function TableLayout.TableInLayout(tableDefinition, layoutDefinition)
+    if not tableDefinition or not tableDefinition.key then
+        return false
     end
 
+    if layoutDefinition and type(layoutDefinition.tables) == "table" then
+        for _, tableKey in pairs(layoutDefinition.tables) do
+            if tableDefinition.key == tableKey then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local layoutKey = layoutDefinition and layoutDefinition.key
+    local tableLayout = tableDefinition.layout
+    return not tableLayout or not layoutKey or tableLayout == layoutKey
+end
+
+function TableLayout.MeasureByKey(tableKey)
+    local tableDefinition = type(tableKey) == "table" and tableKey or NS.Data and NS.Data.tables and NS.Data.tables[tableKey]
     return TableLayout.Measure(tableDefinition)
 end
 
 function TableLayout.GetLayoutDefinition(layerSetKey)
-    local layerSet = LayerSetData(layerSetKey)
-    local layoutKey = layerSet and (layerSet.layout or layerSet.layoutKey)
-    if not layoutKey and NS.Data then
-        layoutKey = NS.Data.defaultLayout
-    end
-
+    local layoutKey = LayerSetLayoutKey(layerSetKey)
     return layoutKey and NS.Data and NS.Data.layouts and NS.Data.layouts[layoutKey] or nil
 end
 
-function TableLayout.NormalizeBounds(layouts, layerSetKey)
+function TableLayout.NormalizeBounds(layouts, layoutDefinition)
     local minX
     local minY
     local maxX
@@ -2888,7 +2907,7 @@ function TableLayout.NormalizeBounds(layouts, layerSetKey)
     for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
         local tableKey = tableDefinition and tableDefinition.key
         local layout = tableKey and layouts[tableKey]
-        if layout and TableLayout.TableInLayerSet(tableDefinition, layerSetKey) then
+        if layout and TableLayout.TableInLayout(tableDefinition, layoutDefinition) then
             local x = layout.x or 0
             local y = layout.y or 0
             local right = x + (layout.width or 0)
@@ -2909,7 +2928,7 @@ function TableLayout.NormalizeBounds(layouts, layerSetKey)
     for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
         local tableKey = tableDefinition and tableDefinition.key
         local layout = tableKey and layouts[tableKey]
-        if layout and TableLayout.TableInLayerSet(tableDefinition, layerSetKey) then
+        if layout and TableLayout.TableInLayout(tableDefinition, layoutDefinition) then
             layout.x = (layout.x or 0) - minX
             layout.y = (layout.y or 0) - minY
         end
@@ -2929,7 +2948,7 @@ function TableLayout.Build()
     local layoutDefinition = TableLayout.GetLayoutDefinition(layerSetKey)
     local layouts = {}
     local function measure(tableKey)
-        return TableLayout.MeasureByKey(tableKey, layerSetKey)
+        return TableLayout.MeasureByKey(tableKey)
     end
 
     if layoutDefinition and type(layoutDefinition.apply) == "function" then
@@ -2942,14 +2961,22 @@ function TableLayout.Build()
         end
     end
 
-    for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
-        local tableKey = tableDefinition and tableDefinition.key
-        if tableKey and TableLayout.TableInLayerSet(tableDefinition, layerSetKey) and not layouts[tableKey] then
-            layouts[tableKey] = TableLayout.Measure(tableDefinition)
+    if layoutDefinition and type(layoutDefinition.tables) == "table" then
+        for _, tableKey in pairs(layoutDefinition.tables) do
+            if tableKey and not layouts[tableKey] then
+                layouts[tableKey] = TableLayout.MeasureByKey(tableKey)
+            end
+        end
+    else
+        for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
+            local tableKey = tableDefinition and tableDefinition.key
+            if tableKey and TableLayout.TableInLayout(tableDefinition, layoutDefinition) and not layouts[tableKey] then
+                layouts[tableKey] = TableLayout.Measure(tableDefinition)
+            end
         end
     end
 
-    return TableLayout.NormalizeBounds(layouts, layerSetKey)
+    return TableLayout.NormalizeBounds(layouts, layoutDefinition)
 end
 
 local function ClampScrollFrame(scroll)
@@ -3033,8 +3060,9 @@ end
 local function BuildRegisteredTables(parent, layouts)
     layouts = layouts or TableLayout.Build()
     local activeLayerSet = GetActiveLayerSetKey()
+    local layoutDefinition = TableLayout.GetLayoutDefinition(activeLayerSet)
     for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
-        if TableLayout.TableInLayerSet(tableDefinition, activeLayerSet) then
+        if TableLayout.TableInLayout(tableDefinition, layoutDefinition) then
             BuildDataTable(parent, tableDefinition, layouts[tableDefinition.key])
         end
     end
@@ -3057,9 +3085,10 @@ NS.UI.BuildTablePlaceholders = function(parent, layouts)
 
     layouts = layouts or TableLayout.Build()
     local activeLayerSet = GetActiveLayerSetKey()
+    local layoutDefinition = TableLayout.GetLayoutDefinition(activeLayerSet)
     local index = 0
     for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
-        if tableDefinition and tableDefinition.key and TableLayout.TableInLayerSet(tableDefinition, activeLayerSet) then
+        if tableDefinition and tableDefinition.key and TableLayout.TableInLayout(tableDefinition, layoutDefinition) then
             index = index + 1
 
             local placeholder = parent.placeholders[index]

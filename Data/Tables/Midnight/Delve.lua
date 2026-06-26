@@ -7,7 +7,7 @@ local Cell = Data.Cell
 local MergedCell = Data.MergedCell
 local RawRowBorders = Data.RowBorders
 
-local TABLE_KEY = "delve"
+local TABLE_KEY = "midnight.delve"
 
 local function Block(definition)
     definition.table = definition.table or TABLE_KEY
@@ -23,7 +23,7 @@ end
 Table({
     key = TABLE_KEY,
     name = "Delve table",
-    layerSet = "midnight",
+    layout = "midnight",
     rowCount = 11,
     columns = {
         { col = "a", width = 60, title = "Level", bg = "light", bold = true },

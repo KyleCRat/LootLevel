@@ -191,9 +191,11 @@ local function SetDefaultActiveLayer(layerSetKey, layerKey)
         defaultActiveLayers[layerSetKey] = layerKey
     end
 
-    NS.DataDefaultActiveLayer = layerKey
+    if not layerSetKey or layerSetKey == NS.DataDefaultLayerSet then
+        NS.DataDefaultActiveLayer = layerKey
+    end
     if NS.Data then
-        NS.Data.defaultActiveLayer = layerKey
+        NS.Data.defaultActiveLayer = NS.DataDefaultActiveLayer
         NS.Data.defaultActiveLayers = defaultActiveLayers
     end
 end
@@ -226,6 +228,18 @@ local function Layer(definition)
     layersByKey[key] = definition
     if definition.layerSet then
         layerSetByLayerKey[key] = definition.layerSet
+        local layerSet = layerSetsByKey[definition.layerSet]
+        if layerSet then
+            layerSet.layers = layerSet.layers or {}
+            layerSet.layerOrder = layerSet.layerOrder or {}
+            if not layerSet.layers[key] then
+                layerSet.layerOrder[#layerSet.layerOrder + 1] = definition
+            end
+            layerSet.layers[key] = definition
+            if definition.active or definition.defaultActive then
+                layerSet.defaultLayer = key
+            end
+        end
     end
     if definition.active or definition.defaultActive then
         SetDefaultActiveLayer(definition.layerSet, key)
@@ -266,12 +280,8 @@ local function LayerSet(definition)
         layerDefinition.layerSet = layerDefinition.layerSet or key
         layerDefinition.order = tonumber(layerDefinition.order) or layerIndex
         local layer = Layer(layerDefinition)
-        if layer then
-            definition.layers[layer.key] = layer
-            definition.layerOrder[#definition.layerOrder + 1] = layer
-            if layer.active or layer.defaultActive then
-                definition.defaultLayer = layer.key
-            end
+        if layer and (layer.active or layer.defaultActive) then
+            definition.defaultLayer = layer.key
         end
     end
 
