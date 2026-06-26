@@ -51,6 +51,30 @@ local COMMANDS = {
             NS:Print("Frame unlocked.")
         end,
     },
+    {
+        triggers = { "layer" },
+        name = "Layer",
+        description = "Show or set the active layer",
+        func = function(args)
+            args = strtrim(args or "")
+            if args == "" or args == "list" then
+                for _, layer in ipairs((NS.Data and NS.Data.layerOrder) or {}) do
+                    local key = layer.key or layer.id
+                    local label = layer.name or key
+                    local layerSet = layer.layerSet
+                    local activeLayer = NS.GetActiveLayerKey and NS:GetActiveLayerKey(layerSet) or nil
+                    local marker = key == activeLayer and "active" or "inactive"
+                    local setLabel = layerSet and (" [" .. layerSet .. "]") or ""
+                    NS:Print(("Layer %s%s - %s (%s)"):format(key, setLabel, label, marker))
+                end
+                return
+            end
+
+            if NS.SetActiveLayer then
+                NS:SetActiveLayer(args)
+            end
+        end,
+    },
 }
 
 local function Matches(command, message)
@@ -77,10 +101,13 @@ function NS:RegisterSlashCommands()
 
     SlashCmdList.LOOTLEVEL = function(message)
         message = strtrim(message or ""):lower()
+        local commandName, args = message:match("^(%S+)%s*(.-)$")
+        commandName = commandName or message
+        args = args or ""
 
         for _, command in ipairs(COMMANDS) do
-            if Matches(command, message) then
-                command.func()
+            if Matches(command, commandName) then
+                command.func(args)
                 return
             end
         end

@@ -10,6 +10,8 @@ local RawColumnBorder = Data.ColumnBorder
 local RawTableBorder = Data.TableBorder
 
 local TABLE_KEY = "primary"
+local LAYER_MIDNIGHT_S1 = NS.Data.LayerKeys.MIDNIGHT_S1
+local LAYER_MIDNIGHT_S2 = NS.Data.LayerKeys.MIDNIGHT_S2
 
 local function Block(definition)
     definition.table = definition.table or TABLE_KEY
@@ -37,6 +39,7 @@ end
 Table({
     key = TABLE_KEY,
     name = "Primary item level table",
+    layerSet = "midnight",
     x = 354,
     y = 0,
     displayedRows = 28,
@@ -201,6 +204,7 @@ Block({
 
 Block({
     id = "midnight.s1.adventurer",
+    layer = LAYER_MIDNIGHT_S1,
     bg = "pink",
     border = "solid1",
     innerBorder = "dashed",
@@ -217,6 +221,7 @@ Block({
 
 Block({
     id = "midnight.s2.adventurer",
+    layer = LAYER_MIDNIGHT_S2,
     bg = "pink",
     border = "solid1",
     innerBorder = "dashed",
@@ -234,6 +239,7 @@ Block({
 
 Block({
     id = "veteran",
+    layer = LAYER_MIDNIGHT_S2,
     bg = "blue",
     border = "solid1",
     innerBorder = "dashed",

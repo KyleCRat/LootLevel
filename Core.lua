@@ -10,6 +10,7 @@ local DEFAULTS = {
     shown = true,
     locked = false,
     scalePercent = 100,
+    activeLayers = {},
     position = {
         point = "CENTER",
         relPoint = "CENTER",

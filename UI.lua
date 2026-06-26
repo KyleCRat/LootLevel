@@ -35,8 +35,11 @@ local MERGED_VERTICAL_LABEL_WIDTH_PADDING = 12
 local MERGED_VERTICAL_LABEL_HEIGHT_PADDING = 2
 
 local STYLE_LAYER_DEFAULT = 10
+local STYLE_LAYER_LAYER = 15
 local STYLE_LAYER_BLOCK = 20
 local STYLE_LAYER_CELL = 30
+local ACTIVE_LAYER_ORDER_BONUS = 100000
+local DEFAULT_INACTIVE_LAYER_ALPHA = 0.3
 
 local Color
 local TextColorFor
@@ -386,7 +389,7 @@ end
 local function RegisterGridLineTexture(overlay, line)
     local texture = overlay:CreateTexture(nil, "ARTWORK")
     ApplyTexturePixelSnapping(texture)
-    texture:SetColorTexture(GRID_COLOR[1], GRID_COLOR[2], GRID_COLOR[3], GRID_COLOR[4])
+    texture:SetColorTexture(GRID_COLOR[1], GRID_COLOR[2], GRID_COLOR[3], line.alpha or GRID_COLOR[4])
     RegisterLayoutRecord({
         kind = "gridline",
         region = texture,
@@ -416,6 +419,7 @@ local function RegisterPatternedGridLine(overlay, line, segmentLength, segmentGa
                 y1 = line.y1 + offset,
                 y2 = line.y1 + segmentEnd,
                 thickness = line.thickness,
+                alpha = line.alpha,
             }
         else
             segmentLine = {
@@ -424,6 +428,7 @@ local function RegisterPatternedGridLine(overlay, line, segmentLength, segmentGa
                 x1 = line.x1 + offset,
                 x2 = line.x1 + segmentEnd,
                 thickness = line.thickness,
+                alpha = line.alpha,
             }
         end
 
@@ -741,6 +746,7 @@ local function StoreGridLine(parent, line, borderStyle)
     line.thickness = borderStyle.thickness or 1
     line.priority = borderStyle.priority or EXPLICIT_BORDER_PRIORITY
     line.order = borderStyle.order or 0
+    line.alpha = borderStyle.alpha or GRID_COLOR[4]
 
     local blockedPriority = parent.gridLineBlocks and parent.gridLineBlocks[key]
     if blockedPriority and (line.priority or 0) <= blockedPriority then
@@ -844,6 +850,186 @@ local function GetRelatedBlockInnerBorderStyle(block, neighborBlock)
     return nil, false
 end
 
+local function LayerData(layerKey)
+    return layerKey and NS.Data and NS.Data.layers and NS.Data.layers[layerKey] or nil
+end
+
+local function LayerSetData(layerSetKey)
+    return layerSetKey and NS.Data and NS.Data.layerSets and NS.Data.layerSets[layerSetKey] or nil
+end
+
+local function NormalizeLayerSetKey(layerSetKey)
+    if layerSetKey == nil then
+        return nil
+    end
+
+    local requested = tostring(layerSetKey):lower()
+    for _, layerSet in ipairs((NS.Data and NS.Data.layerSetOrder) or {}) do
+        local key = layerSet.key or layerSet.id
+        local name = layerSet.name
+        if (key and tostring(key):lower() == requested)
+            or (name and tostring(name):lower() == requested)
+        then
+            return key
+        end
+    end
+
+    return nil
+end
+
+local function DefaultLayerSetKey()
+    if NS.Data and NS.Data.defaultLayerSet then
+        return NS.Data.defaultLayerSet
+    end
+
+    local layerSet = NS.Data and NS.Data.layerSetOrder and NS.Data.layerSetOrder[1]
+    return layerSet and (layerSet.key or layerSet.id) or nil
+end
+
+local function LayerSetKeyForLayer(layerKey)
+    local layer = LayerData(layerKey)
+    if layer and layer.layerSet then
+        return layer.layerSet
+    end
+
+    return layerKey and NS.Data and NS.Data.layerSetByLayerKey and NS.Data.layerSetByLayerKey[layerKey] or nil
+end
+
+local function NormalizeLayerKey(layerKey)
+    if layerKey == nil then
+        return nil
+    end
+
+    local requested = tostring(layerKey):lower()
+    for _, layer in ipairs((NS.Data and NS.Data.layerOrder) or {}) do
+        local key = layer.key or layer.id
+        local name = layer.name
+        if (key and tostring(key):lower() == requested)
+            or (name and tostring(name):lower() == requested)
+        then
+            return key
+        end
+    end
+
+    return nil
+end
+
+local function LayerDisplayName(layerKey)
+    local layer = LayerData(layerKey)
+    return layer and (layer.name or layer.key or layer.id) or layerKey
+end
+
+local function LayerBelongsToSet(layerKey, layerSetKey)
+    if not layerSetKey then
+        return true
+    end
+
+    return LayerSetKeyForLayer(layerKey) == layerSetKey
+end
+
+local function GetLayerSetDefaultLayer(layerSetKey)
+    local layerSet = LayerSetData(layerSetKey)
+    local defaultLayer = layerSet and layerSet.defaultLayer
+    if not defaultLayer and NS.Data and NS.Data.defaultActiveLayers then
+        defaultLayer = NS.Data.defaultActiveLayers[layerSetKey]
+    end
+
+    return NormalizeLayerKey(defaultLayer)
+end
+
+local function GetActiveLayerKey(layerSetKey)
+    layerSetKey = NormalizeLayerSetKey(layerSetKey) or layerSetKey
+
+    local activeLayers = NS.db and NS.db.activeLayers
+    if type(activeLayers) == "table" and layerSetKey then
+        local normalized = NormalizeLayerKey(activeLayers[layerSetKey])
+        if normalized and LayerBelongsToSet(normalized, layerSetKey) then
+            return normalized
+        end
+    end
+
+    local legacyLayer = NormalizeLayerKey(NS.db and NS.db.activeLayer)
+    if legacyLayer and LayerBelongsToSet(legacyLayer, layerSetKey) then
+        return legacyLayer
+    end
+
+    if layerSetKey then
+        local defaultLayer = GetLayerSetDefaultLayer(layerSetKey)
+        if defaultLayer then
+            return defaultLayer
+        end
+    end
+
+    local normalized = NormalizeLayerKey(NS.Data and NS.Data.defaultActiveLayer)
+    if normalized then
+        return normalized
+    end
+
+    return nil
+end
+
+local function IsLayerActive(layerKey)
+    local activeLayer = GetActiveLayerKey(LayerSetKeyForLayer(layerKey))
+    return activeLayer ~= nil and layerKey ~= nil and layerKey == activeLayer
+end
+
+local function LayerRenderOrder(layerKey)
+    local layer = LayerData(layerKey)
+    local order = tonumber(layer and layer.order) or 0
+    if IsLayerActive(layerKey) then
+        order = order + ACTIVE_LAYER_ORDER_BONUS
+    end
+
+    return order
+end
+
+local function LayerVisualAlpha(layerKey)
+    if not layerKey then
+        return 1
+    end
+
+    local layer = LayerData(layerKey)
+    if not layer then
+        return 1
+    end
+
+    local activeLayer = GetActiveLayerKey(LayerSetKeyForLayer(layerKey))
+    if not activeLayer then
+        return 1
+    end
+
+    if IsLayerActive(layerKey) then
+        return Clamp(tonumber(layer and layer.activeAlpha) or 1, 0, 1)
+    end
+
+    return Clamp(tonumber(layer and layer.inactiveAlpha) or DEFAULT_INACTIVE_LAYER_ALPHA, 0, 1)
+end
+
+local function IsLayerVisible(layerKey)
+    local layer = LayerData(layerKey)
+    return not layer or layer.visible ~= false or IsLayerActive(layerKey)
+end
+
+local function BlockWinsOver(existing, candidate)
+    if not existing then
+        return true
+    end
+
+    local existingLayerOrder = LayerRenderOrder(existing.layer)
+    local candidateLayerOrder = LayerRenderOrder(candidate.layer)
+    if candidateLayerOrder ~= existingLayerOrder then
+        return candidateLayerOrder > existingLayerOrder
+    end
+
+    local existingPriority = existing.priority or 0
+    local candidatePriority = candidate.priority or 0
+    if candidatePriority ~= existingPriority then
+        return candidatePriority > existingPriority
+    end
+
+    return (candidate.order or 0) >= (existing.order or 0)
+end
+
 local function EnsureColorBlock(parent, blockData, order)
     parent.colorBlocksById = parent.colorBlocksById or {}
 
@@ -872,12 +1058,16 @@ local function EnsureColorBlock(parent, blockData, order)
             existing.parentInnerBorder = blockData.parentInnerBorder
             existing.parentInnerBorderStyle = CopyBorderStyle(blockData.parentInnerBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
         end
+        if blockData.layer ~= nil then
+            existing.layer = blockData.layer
+        end
         return existing
     end
 
     local block = {
         id = id,
         parentBlockId = blockData.parentBlockId,
+        layer = blockData.layer,
         bg = blockData.bg,
         border = blockData.border or "solid1",
         innerBorder = blockData.innerBorder,
@@ -930,6 +1120,15 @@ local function ResolveCellBackgroundColor(cellData)
     return ResolveCellStyleValue(cellData, "bg") or "blank"
 end
 
+local function ResolveCellVisualAlpha(cellData)
+    local alpha = tonumber(ResolveCellStyleValue(cellData, "alpha"))
+    if alpha == nil then
+        return 1
+    end
+
+    return Clamp(alpha, 0, 1)
+end
+
 local function ApplyCellResolvedStyle(cell)
     local cellData = cell and cell.cellData
     if not cellData then
@@ -937,13 +1136,18 @@ local function ApplyCellResolvedStyle(cell)
     end
 
     local bg = ResolveCellBackgroundColor(cellData)
+    local alpha = ResolveCellVisualAlpha(cellData)
     cellData.resolvedBg = bg
+    cellData.resolvedAlpha = alpha
 
     if cell.bg then
         cell.bg:SetColorTexture(Color(bg))
     end
     if cell.text then
         cell.text:SetTextColor(TextColorFor(bg))
+    end
+    if cell.SetAlpha then
+        cell:SetAlpha(alpha)
     end
 end
 
@@ -952,27 +1156,40 @@ local function AssignCellToBlock(parent, cell, block)
         return
     end
 
+    if not IsLayerVisible(block.layer) then
+        return
+    end
+
     parent.blockByCoord = parent.blockByCoord or {}
 
     local existing = parent.blockByCoord[cell.coordKey]
-    if existing
-        and (
-            (existing.priority or 0) > (block.priority or 0)
-            or ((existing.priority or 0) == (block.priority or 0) and (existing.order or 0) > (block.order or 0))
-        )
-    then
+    if existing and not BlockWinsOver(existing, block) then
         return
     end
 
     parent.blockByCoord[cell.coordKey] = block
     cell.cellData.block = block.id
+    cell.cellData.layer = block.layer
+    cell.cellData.layerName = LayerDisplayName(block.layer)
+
+    if cell.cellData.styleLayers then
+        cell.cellData.styleLayers.layer = nil
+        cell.cellData.styleLayers.block = nil
+    end
+
+    if block.layer then
+        SetCellStyleLayer(cell.cellData, "layer", STYLE_LAYER_LAYER, {
+            alpha = LayerVisualAlpha(block.layer),
+        })
+    end
 
     if block.bg then
         SetCellStyleLayer(cell.cellData, "block", STYLE_LAYER_BLOCK, {
             bg = block.bg,
         })
-        ApplyCellResolvedStyle(cell)
     end
+
+    ApplyCellResolvedStyle(cell)
 end
 
 local function GetCellByCoord(parent, tableKey, coord)
@@ -1001,6 +1218,42 @@ local function ApplyColorBlocks(parent)
     end
 end
 
+local function BlockBorderStyle(block, style)
+    if not style then
+        return nil
+    end
+
+    local alpha = LayerVisualAlpha(block and block.layer)
+    if alpha >= 1 then
+        return style
+    end
+
+    local copy = {}
+    for key, value in pairs(style) do
+        copy[key] = value
+    end
+    copy.alpha = alpha
+    return copy
+end
+
+local function RelatedBlockBorderStyle(block, neighborBlock, style)
+    if not style then
+        return nil
+    end
+
+    local alpha = math.min(LayerVisualAlpha(block and block.layer), LayerVisualAlpha(neighborBlock and neighborBlock.layer))
+    if alpha >= 1 then
+        return style
+    end
+
+    local copy = {}
+    for key, value in pairs(style) do
+        copy[key] = value
+    end
+    copy.alpha = alpha
+    return copy
+end
+
 local function DrawColorBlockBorders(parent)
     for coordKey, block in pairs(parent.blockByCoord or {}) do
         local cell = parent.cellsByCoord and parent.cellsByCoord[coordKey]
@@ -1012,7 +1265,7 @@ local function DrawColorBlockBorders(parent)
                 local innerBorderStyle, isRelatedBlock = GetRelatedBlockInnerBorderStyle(block, neighborBlock)
                 if isRelatedBlock then
                     if innerBorderStyle then
-                        StoreGridLine(parent, GetCellEdgeLine(cell, edge), innerBorderStyle)
+                        StoreGridLine(parent, GetCellEdgeLine(cell, edge), RelatedBlockBorderStyle(block, neighborBlock, innerBorderStyle))
                     else
                         StoreGridLine(parent, GetCellEdgeLine(cell, edge), {
                             style = "none",
@@ -1021,7 +1274,7 @@ local function DrawColorBlockBorders(parent)
                         })
                     end
                 else
-                    StoreGridLine(parent, GetCellEdgeLine(cell, edge), block.borderStyle)
+                    StoreGridLine(parent, GetCellEdgeLine(cell, edge), BlockBorderStyle(block, block.borderStyle))
                 end
             end
         end
@@ -1314,11 +1567,71 @@ local function BuildBorderGrid(parent)
     DrawExplicitBorderRules(parent)
 end
 
+local function RegisterGridParent(parent)
+    if not parent or parent.gridParentRegistered then
+        return
+    end
+
+    parent.gridParentRegistered = true
+    NS.gridParents = NS.gridParents or {}
+    NS.gridParents[#NS.gridParents + 1] = parent
+end
+
+local function ForEachRegisteredGridCell(parent, callback)
+    if not parent or type(callback) ~= "function" then
+        return
+    end
+
+    local seenCells = {}
+    for _, grid in pairs(parent.gridTables or {}) do
+        for _, columns in pairs(grid.rows or {}) do
+            for _, cell in pairs(columns or {}) do
+                if cell and not seenCells[cell] then
+                    seenCells[cell] = true
+                    callback(cell)
+                end
+            end
+        end
+    end
+end
+
+local function ResetGridParentRendering(parent)
+    if not parent then
+        return
+    end
+
+    parent.blocksApplied = false
+    parent.blockByCoord = {}
+    parent.colorBlocksById = {}
+    parent.gridLines = {}
+    parent.gridLineBlocks = {}
+
+    if parent.gridOverlay then
+        parent.gridOverlay:Hide()
+        parent.gridOverlay = nil
+    end
+
+    ForEachRegisteredGridCell(parent, function(cell)
+        local cellData = cell.cellData
+        if cellData then
+            cellData.block = nil
+            cellData.layer = nil
+            cellData.layerName = nil
+            if cellData.styleLayers then
+                cellData.styleLayers.layer = nil
+                cellData.styleLayers.block = nil
+            end
+        end
+        ApplyCellResolvedStyle(cell)
+    end)
+end
+
 local function DrawGridLines(parent)
     if parent.gridOverlay then
         return
     end
 
+    RegisterGridParent(parent)
     BuildBorderGrid(parent)
 
     local overlay = CreateFrame("Frame", nil, parent)
@@ -1490,6 +1803,9 @@ local function BuildTooltipLines(cellData, fallbackLabel)
 
     if cellData.colTitle then
         lines[#lines + 1] = ("Column: %s"):format(cellData.colTitle)
+    end
+    if cellData.layerName then
+        lines[#lines + 1] = ("Layer: %s"):format(cellData.layerName)
     end
     if cellData.text and cellData.text ~= "" then
         lines[#lines + 1] = ("Value: %s"):format(cellData.text)
@@ -2144,6 +2460,38 @@ local function BuildRegisteredTables(parent)
     end
 end
 
+local function LayerFooterText(layer, side)
+    if not layer then
+        return nil
+    end
+
+    if type(layer.footer) == "table" and layer.footer[side] ~= nil then
+        return layer.footer[side]
+    end
+
+    if side == "right" then
+        return layer.footerRight
+    end
+
+    if side == "left" then
+        return layer.footerLeft
+    end
+
+    return nil
+end
+
+local function ActiveFooterRightText()
+    local layerSetKey = DefaultLayerSetKey()
+    local activeLayer = LayerData(GetActiveLayerKey(layerSetKey))
+    return LayerFooterText(activeLayer, "right") or NS.Data.footerRight or ""
+end
+
+local function RefreshFooterText()
+    if NS.footerRightText then
+        NS.footerRightText:SetText(ActiveFooterRightText())
+    end
+end
+
 local function BuildFooter(parent)
     local footer = CreateFrame("Frame", nil, parent)
     SetLayoutPoints(footer, {
@@ -2154,8 +2502,9 @@ local function BuildFooter(parent)
     local left = CreateText(footer, NS.Data.footerLeft, { size = 12 }, "white", "LEFT", "MIDDLE", false)
     SetLayoutBox(left, "LEFT", footer, "LEFT", 0, 0, 720, 20)
 
-    local right = CreateText(footer, NS.Data.footerRight, { size = 12 }, "white", "RIGHT", "MIDDLE", false)
+    local right = CreateText(footer, ActiveFooterRightText(), { size = 12 }, "white", "RIGHT", "MIDDLE", false)
     SetLayoutBox(right, "RIGHT", footer, "RIGHT", 0, 0, 410, 20)
+    NS.footerRightText = right
 end
 
 local function CreateScaleButton(parent)
@@ -2229,6 +2578,42 @@ function NS:HandleCellClick(cellData, button)
     end
 end
 
+function NS:GetActiveLayerKey(layerSetKey)
+    return GetActiveLayerKey(layerSetKey)
+end
+
+function NS:RefreshLayerRendering()
+    for _, parent in ipairs(self.gridParents or {}) do
+        ResetGridParentRendering(parent)
+        DrawGridLines(parent)
+    end
+    RefreshFooterText()
+end
+
+function NS:SetActiveLayer(layerKey)
+    local normalized = NormalizeLayerKey(layerKey)
+    if not normalized then
+        self:Print(("Unknown layer: %s"):format(tostring(layerKey or "")))
+        return false
+    end
+
+    if not self.db then
+        return false
+    end
+
+    local layerSetKey = LayerSetKeyForLayer(normalized)
+    if type(self.db.activeLayers) ~= "table" then
+        self.db.activeLayers = {}
+    end
+    if layerSetKey then
+        self.db.activeLayers[layerSetKey] = normalized
+    end
+    self.db.activeLayer = normalized
+    self:RefreshLayerRendering()
+    self:Print(("Active layer: %s"):format(LayerDisplayName(normalized)))
+    return true
+end
+
 function NS:SetFrameScalePercent(value, silent)
     if not self.db then
         return
@@ -2263,6 +2648,7 @@ function NS:CreateMainFrame()
     self.layoutRecords = {}
     self.layoutFonts = {}
     self.tableBodyScrolls = {}
+    self.gridParents = {}
     SetLayoutSize(frame, FRAME_WIDTH, FRAME_HEIGHT)
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)

@@ -23,6 +23,7 @@ end
 Table({
     key = TABLE_KEY,
     name = "Delve table",
+    layerSet = "midnight",
     x = 0,
     y = 408,
     rowCount = 11,

@@ -20,6 +20,12 @@ NS.Colors = COLORS
 
 local tableOrder = {}
 local tablesByKey = {}
+local layerSetOrder = {}
+local layerSetsByKey = {}
+local layerSetByLayerKey = {}
+local defaultActiveLayers = {}
+local layerOrder = {}
+local layersByKey = {}
 local blocks = {}
 local cellsByTable = {}
 local colorBlocks = {}
@@ -174,6 +180,114 @@ local function Table(definition)
     return definition
 end
 
+local function SetDefaultActiveLayer(layerSetKey, layerKey)
+    if not layerKey then
+        return
+    end
+
+    if layerSetKey then
+        defaultActiveLayers[layerSetKey] = layerKey
+    end
+
+    NS.DataDefaultActiveLayer = layerKey
+    if NS.Data then
+        NS.Data.defaultActiveLayer = layerKey
+        NS.Data.defaultActiveLayers = defaultActiveLayers
+    end
+end
+
+local function Layer(definition)
+    if not definition then
+        return nil
+    end
+
+    local key = definition.key or definition.id
+    if not key then
+        return nil
+    end
+
+    definition.key = key
+    definition.id = definition.id or key
+    definition.layerSet = definition.layerSet or definition.set
+    definition.order = tonumber(definition.order) or (#layerOrder + 1)
+    if definition.inactiveAlpha == nil then
+        definition.inactiveAlpha = 0.3
+    end
+    if definition.activeAlpha == nil then
+        definition.activeAlpha = 1
+    end
+
+    if not layersByKey[key] then
+        layerOrder[#layerOrder + 1] = definition
+    end
+
+    layersByKey[key] = definition
+    if definition.layerSet then
+        layerSetByLayerKey[key] = definition.layerSet
+    end
+    if definition.active or definition.defaultActive then
+        SetDefaultActiveLayer(definition.layerSet, key)
+    end
+
+    return definition
+end
+
+local function LayerSet(definition)
+    if not definition then
+        return nil
+    end
+
+    local key = definition.key or definition.id
+    if not key then
+        return nil
+    end
+
+    local layerDefinitions = definition.layers or {}
+    definition.key = key
+    definition.id = definition.id or key
+    definition.order = tonumber(definition.order) or (#layerSetOrder + 1)
+    definition.defaultLayer = definition.defaultLayer or definition.activeLayer or definition.default
+    definition.layers = {}
+    definition.layerOrder = {}
+
+    if not layerSetsByKey[key] then
+        layerSetOrder[#layerSetOrder + 1] = definition
+    end
+
+    layerSetsByKey[key] = definition
+    if not NS.DataDefaultLayerSet or definition.active or definition.defaultActive then
+        NS.DataDefaultLayerSet = key
+    end
+
+    for layerIndex, layerDefinition in ipairs(layerDefinitions) do
+        layerDefinition.layerSet = layerDefinition.layerSet or key
+        layerDefinition.order = tonumber(layerDefinition.order) or layerIndex
+        local layer = Layer(layerDefinition)
+        if layer then
+            definition.layers[layer.key] = layer
+            definition.layerOrder[#definition.layerOrder + 1] = layer
+            if layer.active or layer.defaultActive then
+                definition.defaultLayer = layer.key
+            end
+        end
+    end
+
+    if not definition.defaultLayer and definition.layerOrder[1] then
+        definition.defaultLayer = definition.layerOrder[1].key
+    end
+
+    if definition.defaultLayer then
+        SetDefaultActiveLayer(key, definition.defaultLayer)
+    end
+
+    if NS.Data then
+        NS.Data.defaultLayerSet = NS.DataDefaultLayerSet
+        NS.Data.defaultActiveLayers = defaultActiveLayers
+    end
+
+    return definition
+end
+
 local function Cell(definition)
     definition.kind = "cell"
     return definition
@@ -195,6 +309,7 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
     cellsByTable[tableKey][cellCoordinate] = {
         text = cellDefinition.text or "",
         bg = cellDefinition.bg,
+        layer = cellDefinition.layer or blockDefinition.layer,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip,
         colTitle = cellDefinition.title,
         bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
@@ -240,6 +355,7 @@ local function RegisterMergedCell(blockDefinition, cellDefinition)
         span = span,
         text = cellDefinition.text or "",
         bg = cellDefinition.bg,
+        layer = cellDefinition.layer or blockDefinition.layer,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip or DefaultTooltip(cellDefinition.text),
         colTitle = cellDefinition.title,
         bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
@@ -270,6 +386,7 @@ local function Block(definition)
                     id = ("%s.merged.%d"):format(definition.id, #mergedCellColorBlocks + 1),
                     parentBlockId = definition.id,
                     bg = cellDefinition.bg or definition.bg,
+                    layer = cellDefinition.layer or definition.layer,
                     border = cellDefinition.border or definition.border or "solid1",
                     innerBorder = cellDefinition.innerBorder,
                     parentInnerBorder = cellDefinition.parentInnerBorder or definition.innerBorder,
@@ -290,6 +407,7 @@ local function Block(definition)
         colorBlocks[#colorBlocks + 1] = {
             id = definition.id,
             bg = definition.bg,
+            layer = definition.layer,
             border = definition.border or "solid1",
             innerBorder = definition.innerBorder,
             cells = blockCellCoordinates,
@@ -390,6 +508,8 @@ end
 
 NS.DataAPI = {
     Table = Table,
+    LayerSet = LayerSet,
+    Layer = Layer,
     Block = Block,
     Cell = Cell,
     MergedCell = MergedCell,
@@ -404,11 +524,20 @@ NS.DataAPI = {
 NS.Data = {
     tableOrder = tableOrder,
     tables = tablesByKey,
+    layerSetOrder = layerSetOrder,
+    layerSets = layerSetsByKey,
+    layerSetByLayerKey = layerSetByLayerKey,
+    layerOrder = layerOrder,
+    layers = layersByKey,
+    defaultLayerSet = NS.DataDefaultLayerSet,
+    defaultActiveLayer = NS.DataDefaultActiveLayer,
+    defaultActiveLayers = defaultActiveLayers,
     blocks = blocks,
     cells = cellsByTable,
     colorBlocks = colorBlocks,
     mergedCells = mergedCells,
     borderRules = borderRules,
+    LayerKeys = {},
     footerLeft = "Midnight - Season 2 (12.1.0) - by Yvairel <Party Shark> <Suds with Buds>",
     footerRight = "1 Once a Week | VF: Venomforged | GV: Great Vault",
 }
