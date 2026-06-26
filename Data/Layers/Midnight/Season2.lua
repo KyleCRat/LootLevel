@@ -237,58 +237,116 @@ Block({
 --- Activity
 
 Block({
-    id = "midnight.s2.activity.markers",
+    id = "midnight.s2.activity.muted",
     table = TABLE_ACTIVITY,
     layer = LAYER,
+    bg = "muted",
     border = "solid1",
-    innerBorder = "dashed",
+    innerColBorder = "solid1",
+    innerRowBorder = "dashed",
     cells = {
-        Cell({ col = "a", row = 16, text = "N", bg = "pink" }),
-        Cell({ col = "a", row = 21, text = "H", bg = "blue" }),
-        Cell({ col = "a", row = 22, text = "NM", bg = "yellow" }),
-        Cell({ col = "a", row = 26, text = "NM1", bg = "red" }),
-
-        Cell({ col = "b", row = 17, text = "1-3", bg = "pink" }),
-        Cell({ col = "b", row = 18, text = "4", bg = "pink" }),
-        Cell({ col = "b", row = 19, text = "5", bg = "blue" }),
-        Cell({ col = "b", row = 20, text = "6", bg = "blue" }),
-        Cell({ col = "b", row = 21, text = "7", bg = "blue" }),
-        Cell({ col = "b", row = 22, text = "8+", bg = "blue" }),
-        Cell({ col = "b", row = 26, text = "8+1", bg = "red" }),
-
-        Cell({ col = "c", row = 19, text = "4", bg = "blue" }),
-        Cell({ col = "c", row = 21, text = "5", bg = "blue" }),
-        Cell({ col = "c", row = 23, text = "6", bg = "yellow" }),
-        Cell({ col = "c", row = 25, text = "7", bg = "yellow" }),
-        Cell({ col = "c", row = 26, text = "8+", bg = "red" }),
-
-        Cell({ col = "d", row = 18, text = "1-2", bg = "blue" }),
-        Cell({ col = "d", row = 19, text = "3", bg = "blue" }),
-        Cell({ col = "d", row = 22, text = "4", bg = "yellow" }),
-        Cell({ col = "d", row = 24, text = "5", bg = "yellow" }),
-        Cell({ col = "d", row = 25, text = "6", bg = "yellow" }),
-        Cell({ col = "d", row = 26, text = "7", bg = "yellow" }),
-        Cell({ col = "d", row = 28, text = "8+", bg = "red" }),
-
-        Cell({ col = "e", row = 12, text = "N", bg = "muted" }),
-        Cell({ col = "e", row = 17, text = "H", bg = "pink" }),
-        Cell({ col = "e", row = 22, text = "M", bg = "yellow" }),
-        Cell({ col = "e", row = 23, text = "2-3", bg = "yellow" }),
-        Cell({ col = "e", row = 24, text = "4", bg = "yellow" }),
-        Cell({ col = "e", row = 25, text = "5", bg = "yellow" }),
-        Cell({ col = "e", row = 26, text = "6-7", bg = "red" }),
-        Cell({ col = "e", row = 27, text = "8-9", bg = "red" }),
-        Cell({ col = "e", row = 28, text = "10+", bg = "red" }),
-
-        Cell({ col = "f", row = 21, text = "H", bg = "blue" }),
-        Cell({ col = "f", row = 25, text = "M", bg = "yellow" }),
-        Cell({ col = "f", row = 26, text = "2-3", bg = "red" }),
-        Cell({ col = "f", row = 27, text = "4-5", bg = "red" }),
-        Cell({ col = "f", row = 28, text = "6", bg = "red" }),
-        Cell({ col = "f", row = 29, text = "7-9", bg = "red" }),
-        Cell({ col = "f", row = 30, text = "10+", bg = "purple" }),
+        Cell({ col = "e", row = 12, text = "N" }),
     },
 })
+
+Block({
+    id = "midnight.s2.activity.pink",
+    table = TABLE_ACTIVITY,
+    layer = LAYER,
+    bg = "pink",
+    border = "solid1",
+    innerColBorder = "solid1",
+    innerRowBorder = "dashed",
+    cells = {
+        Cell({ col = "a", row = 16, text = "N" }),
+        Cell({ col = "b", row = 17, text = "1-3" }),
+        Cell({ col = "b", row = 18, text = "4" }),
+        Cell({ col = "e", row = 17, text = "H" }),
+    },
+})
+
+Block({
+    id = "midnight.s2.activity.blue",
+    table = TABLE_ACTIVITY,
+    layer = LAYER,
+    bg = "blue",
+    border = "solid1",
+    innerColBorder = "solid1",
+    innerRowBorder = "dashed",
+    cells = {
+        Cell({ col = "a", row = 21, text = "H" }),
+        Cell({ col = "b", row = 19, text = "5" }),
+        Cell({ col = "b", row = 20, text = "6" }),
+        Cell({ col = "b", row = 21, text = "7" }),
+        Cell({ col = "b", row = 22, text = "8+" }),
+        Cell({ col = "c", row = 19, text = "4" }),
+        Cell({ col = "c", row = 21, text = "5" }),
+        Cell({ col = "d", row = 18, text = "1-2" }),
+        Cell({ col = "d", row = 19, text = "3" }),
+        Cell({ col = "f", row = 21, text = "H" }),
+    },
+})
+
+Block({
+    id = "midnight.s2.activity.yellow",
+    table = TABLE_ACTIVITY,
+    layer = LAYER,
+    bg = "yellow",
+    border = "solid1",
+    innerColBorder = "solid1",
+    innerRowBorder = "dashed",
+    cells = {
+        Cell({ col = "a", row = 22, text = "NM" }),
+        Cell({ col = "c", row = 23, text = "6" }),
+        Cell({ col = "c", row = 25, text = "7" }),
+        Cell({ col = "d", row = 22, text = "4" }),
+        Cell({ col = "d", row = 24, text = "5" }),
+        Cell({ col = "d", row = 25, text = "6" }),
+        Cell({ col = "d", row = 26, text = "7" }),
+        Cell({ col = "e", row = 22, text = "M" }),
+        Cell({ col = "e", row = 23, text = "2-3" }),
+        Cell({ col = "e", row = 24, text = "4" }),
+        Cell({ col = "e", row = 25, text = "5" }),
+        Cell({ col = "f", row = 25, text = "M" }),
+    },
+})
+
+Block({
+    id = "midnight.s2.activity.red",
+    table = TABLE_ACTIVITY,
+    layer = LAYER,
+    bg = "red",
+    border = "solid1",
+    innerColBorder = "solid1",
+    innerRowBorder = "dashed",
+    cells = {
+        Cell({ col = "a", row = 26, text = "NM1" }),
+        Cell({ col = "b", row = 26, text = "8+1" }),
+        Cell({ col = "c", row = 26, text = "8+" }),
+        Cell({ col = "d", row = 28, text = "8+" }),
+        Cell({ col = "e", row = 26, text = "6-7" }),
+        Cell({ col = "e", row = 27, text = "8-9" }),
+        Cell({ col = "e", row = 28, text = "10+" }),
+        Cell({ col = "f", row = 26, text = "2-3" }),
+        Cell({ col = "f", row = 27, text = "4-5" }),
+        Cell({ col = "f", row = 28, text = "6" }),
+        Cell({ col = "f", row = 29, text = "7-9" }),
+    },
+})
+
+Block({
+    id = "midnight.s2.activity.purple",
+    table = TABLE_ACTIVITY,
+    layer = LAYER,
+    bg = "purple",
+    border = "solid1",
+    innerColBorder = "solid1",
+    innerRowBorder = "dashed",
+    cells = {
+        Cell({ col = "f", row = 30, text = "10+" }),
+    },
+})
+
 
 --------------------------------------------------------------------------------
 --- Dungeon
@@ -299,7 +357,7 @@ Block({
     layer = LAYER,
     bg = "light",
     border = "solid1",
-    innerBorder = "dashed",
+    innerRowBorder = "dashed",
     bold = true,
     cells = {
         Cell({ col = "a", row = 2, text = "N" }),
@@ -325,7 +383,7 @@ Block({
     layer = LAYER,
     bg = "light",
     border = "solid1",
-    innerBorder = "dashed",
+    innerRowBorder = "dashed",
     cells = {
         MergedCell({ col = "g", row = 2, toRow = 15, text = "Dungeon", vertical = true }),
     },
@@ -335,7 +393,8 @@ Block({
     id = "midnight.s2.dungeon.normal",
     table = TABLE_DUNGEON,
     layer = LAYER,
-    bg = "light",
+    innerRowBorder = "dashed",
+    bg = "muted",
     border = "solid1",
     cells = {
         Cell({ col = "b", row = 2, text = "253" }),
@@ -347,6 +406,7 @@ Block({
     id = "midnight.s2.dungeon.heroic",
     table = TABLE_DUNGEON,
     layer = LAYER,
+    innerRowBorder = "dashed",
     bg = "blue",
     border = "solid1",
     cells = {
@@ -362,6 +422,7 @@ Block({
     id = "midnight.s2.dungeon.yellow",
     table = TABLE_DUNGEON,
     layer = LAYER,
+    innerRowBorder = "dashed",
     bg = "yellow",
     border = "solid1",
     cells = {
@@ -392,6 +453,7 @@ Block({
     id = "midnight.s2.dungeon.red",
     table = TABLE_DUNGEON,
     layer = LAYER,
+    innerRowBorder = "dashed",
     bg = "red",
     border = "solid1",
     cells = {
@@ -441,6 +503,7 @@ Block({
     id = "midnight.s2.dungeon.purple",
     table = TABLE_DUNGEON,
     layer = LAYER,
+    innerRowBorder = "dashed",
     bg = "purple",
     border = "solid1",
     cells = {
@@ -468,7 +531,7 @@ Block({
     layer = LAYER,
     bg = "light",
     border = "solid1",
-    innerBorder = "none",
+    innerRowBorder = "dashed",
     bold = true,
     cells = {
         Cell({ col = "a", row = 2, text = "1" }),
@@ -491,7 +554,7 @@ Block({
     layer = LAYER,
     bg = "light",
     border = "solid1",
-    innerBorder = "none",
+    innerRowBorder = "dashed",
     cells = {
         MergedCell({ col = "g", row = 2, toRow = 12, text = "Delve", vertical = true }),
     },
@@ -503,7 +566,7 @@ Block({
     layer = LAYER,
     bg = "pink",
     border = "solid1",
-    innerBorder = "none",
+    innerRowBorder = "dashed",
     cells = {
         Cell({ col = "b", row = 2, text = "259" }),
         Cell({ col = "c", row = 2, text = "1/6" }),
@@ -523,7 +586,7 @@ Block({
     layer = LAYER,
     bg = "blue",
     border = "solid1",
-    innerBorder = "none",
+    innerRowBorder = "dashed",
     cells = {
         Cell({ col = "d", row = 2, text = "272" }),
         Cell({ col = "e", row = 2, text = "1/6" }),
@@ -548,7 +611,7 @@ Block({
     layer = LAYER,
     bg = "yellow",
     border = "solid1",
-    innerBorder = "none",
+    innerRowBorder = "dashed",
     cells = {
         Cell({ col = "d", row = 6, text = "285" }),
         Cell({ col = "e", row = 6, text = "1/6" }),
@@ -579,7 +642,7 @@ Block({
     layer = LAYER,
     bg = "red",
     border = "solid1",
-    innerBorder = "none",
+    innerRowBorder = "dashed",
     cells = {
         Cell({ col = "d", row = 9, text = "298" }),
         Cell({ col = "e", row = 9, text = "1/6" }),
