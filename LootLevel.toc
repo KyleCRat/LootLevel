@@ -9,6 +9,7 @@ Libs\LibStub\LibStub.lua
 Libs\LibPopupSlider-1.0\LibPopupSlider-1.0.xml
 
 Core.lua
+Shared\Coordinates.lua
 Data.lua
 Data\Layouts.lua
 Data\LayerKeys.lua
@@ -22,6 +23,18 @@ Data\Tables\Midnight\Delve.lua
 Data\Tables\Midnight\Raid.lua
 Data\Tables\Midnight\Activity.lua
 UI\Foundation.lua
+UI\GridLines.lua
+UI\LayerState.lua
+UI\CellStyles.lua
+UI\Borders.lua
+UI\RenderCache.lua
+UI\Tooltips.lua
+UI\BodyScroll.lua
+UI\Cells.lua
+UI\TableGeometry.lua
+UI\TableLayout.lua
+UI\TableRenderer.lua
+UI\Scale.lua
 UI.lua
 UI\Footer.lua
 UI\ScaleButton.lua

@@ -1,5 +1,9 @@
 local ADDON_NAME, NS = ...
 
+local Coordinates = NS.Coordinates
+local CellCoordinate = Coordinates.CellCoordinate
+local NormalizeCellRange = Coordinates.NormalizeCellRange
+
 local COLORS = {
     frame = { 0.11, 0.11, 0.11, 0.96 },
     panel = { 0.16, 0.16, 0.16, 0.98 },
@@ -35,36 +39,6 @@ local cellRecordOrder = 0
 local colorBlocks = {}
 local mergedCells = {}
 local borderRules = {}
-
-local function ColumnIndex(columnKey)
-    columnKey = tostring(columnKey or ""):lower()
-    local index = 0
-    for position = 1, #columnKey do
-        local byte = string.byte(columnKey, position)
-        if byte < 97 or byte > 122 then
-            return nil
-        end
-        index = (index * 26) + (byte - 96)
-    end
-
-    return index > 0 and index or nil
-end
-
-local function ColumnKeyFromIndex(index)
-    index = tonumber(index)
-    if not index or index < 1 then
-        return nil
-    end
-
-    local columnKey = ""
-    while index > 0 do
-        local remainder = (index - 1) % 26
-        columnKey = string.char(97 + remainder) .. columnKey
-        index = math.floor((index - 1) / 26)
-    end
-
-    return columnKey
-end
 
 local function DefaultTooltip(title)
     if title then
@@ -114,61 +88,6 @@ local function MergeFontStyles(defaultDefinition, overrideDefinition)
     end
 
     return merged
-end
-
-local function CellCoordinate(definition)
-    if definition.coord then
-        return definition.coord
-    end
-
-    if not definition.col or not definition.row then
-        return nil
-    end
-
-    return ("%s%d"):format(definition.col, definition.row)
-end
-
-local function ParseCellCoordinate(coord)
-    local columnKey, row = tostring(coord or ""):lower():match("^([a-z]+)(%d+)$")
-    local column = ColumnIndex(columnKey)
-    row = tonumber(row)
-    if not column or not row then
-        return nil
-    end
-
-    return column, row, ("%s%d"):format(columnKey, row)
-end
-
-local function NormalizeCellRange(startCoord, endCoord)
-    local startColumn, startRow = ParseCellCoordinate(startCoord)
-    local endColumn, endRow = ParseCellCoordinate(endCoord or startCoord)
-    if not startColumn or not endColumn or not startRow or not endRow then
-        return nil
-    end
-
-    if startColumn > endColumn then
-        startColumn, endColumn = endColumn, startColumn
-    end
-    if startRow > endRow then
-        startRow, endRow = endRow, startRow
-    end
-
-    local coordinates = {}
-    for row = startRow, endRow do
-        for column = startColumn, endColumn do
-            coordinates[#coordinates + 1] = ("%s%d"):format(ColumnKeyFromIndex(column), row)
-        end
-    end
-
-    return {
-        fromColumn = startColumn,
-        toColumn = endColumn,
-        fromRow = startRow,
-        toRow = endRow,
-        fromCoord = ("%s%d"):format(ColumnKeyFromIndex(startColumn), startRow),
-        toCoord = ("%s%d"):format(ColumnKeyFromIndex(endColumn), endRow),
-        coordinates = coordinates,
-    }
 end
 
 local function Table(definition)
