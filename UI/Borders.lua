@@ -19,7 +19,11 @@ local NormalizeCoord = Coordinates.NormalizeCoord
 local ParseCoord = Coordinates.ParseCoord
 local NormalizeCellSpan = Coordinates.NormalizeCellSpan
 local ForEachCellSpanCoord = Coordinates.ForEachCellSpanCoord
+local VISUAL_TIER_INACTIVE_LAYER = 100
+local VISUAL_TIER_FOREGROUND = 200
 
+-- Visual tiers only push inactive layer-owned lines into the background.
+-- Active layers and table structure still compete by normal border priority.
 local function NormalizeBorderStyle(value)
     if value == nil then
         return nil
@@ -100,6 +104,14 @@ local function NormalizeBorderStyle(value)
     }
 end
 
+local function BorderVisualTier(layerKey)
+    if layerKey and not Layers.IsLayerActive(layerKey) then
+        return VISUAL_TIER_INACTIVE_LAYER
+    end
+
+    return VISUAL_TIER_FOREGROUND
+end
+
 local function CopyBorderStyle(value, priority, order, layerKey)
     local style = NormalizeBorderStyle(value)
     if not style then
@@ -109,6 +121,7 @@ local function CopyBorderStyle(value, priority, order, layerKey)
     local copy = Helpers.ShallowCopy(style) or {}
     copy.priority = priority or copy.priority or 0
     copy.order = order or copy.order or 0
+    copy.visualTier = BorderVisualTier(layerKey)
     if layerKey then
         copy.layer = layerKey
         copy.layerOrder = Layers.LayerRenderOrder(layerKey)
@@ -120,6 +133,12 @@ end
 local function LineWinsOver(existing, candidate)
     if not existing then
         return true
+    end
+
+    local existingVisualTier = existing.visualTier or VISUAL_TIER_FOREGROUND
+    local candidateVisualTier = candidate and candidate.visualTier or VISUAL_TIER_FOREGROUND
+    if candidateVisualTier ~= existingVisualTier then
+        return candidateVisualTier > existingVisualTier
     end
 
     local existingLayerOrder = existing.layerOrder
@@ -248,6 +267,7 @@ local function StoreGridLine(parent, line, borderStyle)
     line.alpha = borderStyle.alpha or UI.Grid.color[4]
     line.layer = borderStyle.layer
     line.layerOrder = borderStyle.layerOrder
+    line.visualTier = borderStyle.visualTier
 
     local blockedStyle = parent.gridLineBlocks and parent.gridLineBlocks[key]
     if blockedStyle and not LineWinsOver(blockedStyle, line) then
@@ -550,11 +570,16 @@ local function DrawColorBlockBorders(parent)
                     if innerBorderStyle then
                         StoreGridLine(parent, GetCellEdgeLine(cell, edge), RelatedBlockBorderStyle(block, neighborBlock, innerBorderStyle))
                     else
-                        StoreGridLine(parent, GetCellEdgeLine(cell, edge), {
-                            style = "none",
-                            priority = BorderPriority.block + MaxBlockPriority(block, neighborBlock),
-                            order = block.order or 0,
-                        })
+                        StoreGridLine(
+                            parent,
+                            GetCellEdgeLine(cell, edge),
+                            CopyBorderStyle(
+                                { style = "none" },
+                                BorderPriority.block + MaxBlockPriority(block, neighborBlock),
+                                block.order or 0,
+                                block.layer
+                            )
+                        )
                     end
                 else
                     StoreGridLine(parent, GetCellEdgeLine(cell, edge), BlockBorderStyle(block, block.borderStyle))
