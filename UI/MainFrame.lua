@@ -88,6 +88,9 @@ local function EnsureActiveTableLayer(frame, shellLayout)
             UI.DrawGridLines(tableLayer)
             UI.PrewarmLayerRenderCaches()
         end)
+        if UI.ApplyActiveLayerBodyScrollDefaults then
+            UI.ApplyActiveLayerBodyScrollDefaults(false)
+        end
     end
 
     HideTableLayers(frame)
@@ -135,6 +138,7 @@ function NS:CreateMainFrame()
     self.tableBodyScrolls = {}
     self.tableBodyScrollGroups = {}
     self.tableBodyScrollOffsets = {}
+    self.appliedLayerBodyScrollDefaults = {}
     self.gridParents = {}
     frame:SetFrameStrata("HIGH")
     frame:SetToplevel(true)

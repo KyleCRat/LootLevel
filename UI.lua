@@ -3148,6 +3148,7 @@ local function BuildDataTable(parent, tableDefinition, layout)
     local visibleRows = layout and layout.visibleRows or DisplayedBodyRows(tableDefinition, totalRows)
     local spanMap = BuildTableSpanMap(tableDefinition, rowLayout)
     local bodyScroll, bodyContent = CreateTableBodyScroll(parent, tableDefinition, x, y + HEADER_HEIGHT, TableWidth(tableDefinition), visibleRows, totalRows)
+    bodyScroll.bodyRowLayout = rowLayout
     BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0, rowLayout, spanMap)
     DrawGridLines(bodyContent)
     DrawTableBodyViewportBorder(bodyScroll, tableDefinition, TableWidth(tableDefinition), visibleRows)
@@ -3166,6 +3167,73 @@ local function BuildRegisteredTables(parent, layouts)
 end
 
 NS.UI.BuildRegisteredTables = BuildRegisteredTables
+function NS.UI.ApplyActiveLayerBodyScrollDefaults(force)
+    local activeLayerSet = GetActiveLayerSetKey()
+    local activeLayer = GetActiveLayerKey(activeLayerSet)
+    local layer = LayerData(activeLayer)
+    local scrollDefaults = layer and layer.bodyScroll
+    if type(scrollDefaults) ~= "table" then
+        return
+    end
+
+    NS.tableBodyScrollOffsets = NS.tableBodyScrollOffsets or {}
+    NS.appliedLayerBodyScrollDefaults = NS.appliedLayerBodyScrollDefaults or {}
+
+    local function ResolveScrollOffset(definition, scroll)
+        if type(definition) == "number" then
+            return ScalePixel(math.max(0, definition - 2) * ROW_HEIGHT)
+        end
+        if type(definition) ~= "table" then
+            return nil
+        end
+
+        local offset = tonumber(definition.offset)
+        if offset then
+            return ScalePixel(math.max(0, offset))
+        end
+
+        local row = tonumber(definition.row)
+        if row then
+            local rowLayout = scroll and scroll.bodyRowLayout
+            local bodyRow = rowLayout and rowLayout.byRow and rowLayout.byRow[row]
+            if bodyRow then
+                return ScalePixel(bodyRow.y or 0)
+            end
+
+            return ScalePixel(math.max(0, row - 2) * ROW_HEIGHT)
+        end
+
+        return nil
+    end
+
+    local function ApplyScrollOffset(scroll, offset)
+        if not scroll or not offset then
+            return
+        end
+
+        scroll.syncingBodyScroll = true
+        scroll:SetVerticalScroll(Clamp(offset, 0, scroll:GetVerticalScrollRange() or 0))
+        scroll.syncingBodyScroll = nil
+    end
+
+    for bodyScrollGroup, definition in pairs(scrollDefaults) do
+        local appliedKey = ("%s:%s"):format(tostring(activeLayer or ""), tostring(bodyScrollGroup or ""))
+        if force or not NS.appliedLayerBodyScrollDefaults[appliedKey] then
+            local groupScrolls = NS.tableBodyScrollGroups and NS.tableBodyScrollGroups[bodyScrollGroup] or nil
+            local referenceScroll = groupScrolls and groupScrolls[1] or nil
+            local offset = ResolveScrollOffset(definition, referenceScroll)
+            if offset then
+                NS.tableBodyScrollOffsets[bodyScrollGroup] = offset
+
+                for _, scroll in ipairs(groupScrolls or {}) do
+                    ApplyScrollOffset(scroll, offset)
+                end
+
+                NS.appliedLayerBodyScrollDefaults[appliedKey] = true
+            end
+        end
+    end
+end
 NS.UI.DrawGridLines = DrawGridLines
 NS.UI.BuildTableLayout = function()
     return TableLayout.Build()
@@ -3279,6 +3347,9 @@ function NS:SetActiveLayerSet(layerSetKey, silent)
     if self.RefreshMainFrameLayout and previousLayerSet ~= normalized then
         self:RefreshMainFrameLayout()
     end
+    if NS.UI.ApplyActiveLayerBodyScrollDefaults then
+        NS.UI.ApplyActiveLayerBodyScrollDefaults(true)
+    end
     self:RefreshLayerRendering()
     if not silent then
         self:Print(("Active layer set: %s"):format(LayerSetDisplayName(normalized)))
@@ -3309,6 +3380,9 @@ function NS:SetActiveLayer(layerKey, silent)
     self.db.activeLayer = normalized
     if self.RefreshMainFrameLayout and layerSetKey and previousLayerSet ~= layerSetKey then
         self:RefreshMainFrameLayout()
+    end
+    if NS.UI.ApplyActiveLayerBodyScrollDefaults then
+        NS.UI.ApplyActiveLayerBodyScrollDefaults(true)
     end
     self:RefreshLayerRendering()
     if not silent then

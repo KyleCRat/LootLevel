@@ -25,6 +25,9 @@ Layer({
     order = 20,
     active = true,
     inactiveAlpha = 0.3,
+    bodyScroll = {
+        ["midnight.raidActivity"] = { row = 14 },
+    },
     footer = {
         right = "1 Once a Week | VF: Venomforged | GV: Great Vault",
     },

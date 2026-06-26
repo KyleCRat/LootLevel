@@ -21,6 +21,9 @@ Layer({
     buttonText = "S1",
     order = 10,
     inactiveAlpha = 0.3,
+    bodyScroll = {
+        ["midnight.raidActivity"] = { row = 2 },
+    },
     footer = {
         right = "Midnight Season 1",
     },

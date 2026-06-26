@@ -11,6 +11,9 @@ Layer({
     buttonText = "S1",
     order = 30,
     inactiveAlpha = 0.3,
+    bodyScroll = {
+        ["midnight.raidActivity"] = { row = 2 },
+    },
     footer = {
         right = "The Last Titan Season 1 test layer",
     },
