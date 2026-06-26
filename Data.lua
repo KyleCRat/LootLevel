@@ -264,6 +264,7 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
     cellsByTable[tableKey] = cellsByTable[tableKey] or {}
     local cellRecord = {
         text = cellDefinition.text or "",
+        atlas = cellDefinition.atlas,
         bg = cellDefinition.bg,
         layer = cellDefinition.layer or blockDefinition.layer,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip,
@@ -318,6 +319,7 @@ local function RegisterMergedCell(blockDefinition, cellDefinition)
         endCoord = span.toCoord,
         span = span,
         text = cellDefinition.text or "",
+        atlas = cellDefinition.atlas,
         bg = cellDefinition.bg,
         layer = cellDefinition.layer or blockDefinition.layer,
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip or DefaultTooltip(cellDefinition.text),

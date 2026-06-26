@@ -89,6 +89,16 @@ local function CreateVerticalText(parent, x, y, width, height, text, font, bold)
     return fs
 end
 
+local function CreateAtlasIcon(parent, width, height, atlas)
+    local icon = parent:CreateTexture(nil, "ARTWORK")
+    UI.ApplyTexturePixelSnapping(icon)
+    icon:SetAtlas(atlas)
+
+    local size = math.max(1, math.min(width, height) - 6)
+    UI.SetLayoutBox(icon, "CENTER", parent, "CENTER", 0, 0, size, size)
+    return icon
+end
+
 local function CreateCell(parent, x, y, width, height, cellData)
     cellData = cellData or {}
     CellStyles.SetCellStyleLayer(cellData, "default", StyleLayer.default, {
@@ -114,7 +124,9 @@ local function CreateCell(parent, x, y, width, height, cellData)
     highlight:SetColorTexture(1, 1, 1, 0.22)
 
     local text
-    if cellData.vertical then
+    if type(cellData.atlas) == "string" and cellData.atlas ~= "" then
+        cell.icon = CreateAtlasIcon(cell, width, height, cellData.atlas)
+    elseif cellData.vertical then
         text = CreateVerticalText(cell, 0, 0, width, height, cellData.text or "", cellData.font, cellData.bold)
     else
         text = UI.CreateText(cell, cellData.text or "", UI.FontWithFallbackSize(cellData.font, 12), "black", "CENTER", "MIDDLE", cellData.bold)
@@ -169,5 +181,6 @@ Cells.MergeData = MergeCellData
 Cells.GetConfiguredData = GetConfiguredCellData
 Cells.GetUnscaledFontMeasurement = GetUnscaledFontMeasurement
 Cells.CreateVerticalText = CreateVerticalText
+Cells.CreateAtlasIcon = CreateAtlasIcon
 Cells.Create = CreateCell
 Cells.CreateHeader = CreateHeader
