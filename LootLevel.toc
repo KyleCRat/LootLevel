@@ -21,6 +21,7 @@ Data\Tables\Midnight\Dungeon.lua
 Data\Tables\Midnight\Delve.lua
 Data\Tables\Midnight\Raid.lua
 Data\Tables\Midnight\Activity.lua
+UI\Foundation.lua
 UI.lua
 UI\Footer.lua
 UI\ScaleButton.lua

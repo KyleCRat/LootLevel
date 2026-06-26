@@ -1,479 +1,15 @@
 local ADDON_NAME, NS = ...
 
-local FRAME_BACKDROP = {
-    bgFile = "Interface\\Buttons\\WHITE8X8",
-    edgeFile = "Interface\\Buttons\\WHITE8X8",
-    edgeSize = 1,
-}
-
-local GRID_COLOR = { 0, 0, 0, 1 }
-local DOTTED_GRID_DOT = 1
-local DOTTED_GRID_GAP = 3
-local DASHED_GRID_DASH = 2
-local DASHED_GRID_GAP = 2
-local BLOCK_BORDER_PRIORITY = 20
-local EXPLICIT_NONE_PRIORITY = 80
-local EXPLICIT_BORDER_PRIORITY = 100
-local EXPLICIT_THICK_BORDER_PRIORITY = 110
-local CELL_BORDER_PRIORITY = 120
-local CELL_BORDER_ORDER = 0
-
-local FRAME_WIDTH = 1180
-local FRAME_HEIGHT = 760
-local PADDING = 14
-local TITLE_HEIGHT = 28
-local FOOTER_HEIGHT = 22
-local HEADER_HEIGHT = 24
-local ROW_HEIGHT = 24
-local SCALE_MIN_PERCENT = 50
-local SCALE_MAX_PERCENT = 200
-local SCALE_STEP_PERCENT = 5
-local SCALE_DEFAULT_PERCENT = 100
-
-local MERGED_VERTICAL_LABEL_NUDGE_X = -6
-local MERGED_VERTICAL_LABEL_NUDGE_Y = 7
-local MERGED_VERTICAL_LABEL_WIDTH_PADDING = 12
-local MERGED_VERTICAL_LABEL_HEIGHT_PADDING = 2
-
-local STYLE_LAYER_DEFAULT = 10
-local STYLE_LAYER_LAYER = 15
-local STYLE_LAYER_BLOCK = 20
-local STYLE_LAYER_CELL = 30
-local ACTIVE_LAYER_ORDER_BONUS = 100000
-local DEFAULT_INACTIVE_LAYER_ALPHA = 0.3
-
-local Color
-local TextColorFor
+local UI = NS.UI
+local Grid = UI.Grid
+local BorderPriority = UI.BorderPriority
+local Metrics = UI.Metrics
+local StyleLayer = UI.StyleLayer
+local LayerState = UI.LayerState
+local MergedVerticalLabel = UI.MergedVerticalLabel
 local layerRenderContext
-local ScaleLayout = {
-    debounceSeconds = 0.12,
-    deferredDepth = 0,
-    serial = 0,
-}
 local RenderCache = {}
 local TableLayout = {}
-
-local function Pixel(value)
-    value = value or 0
-    if value >= 0 then
-        return math.floor(value + 0.5)
-    end
-
-    return math.ceil(value - 0.5)
-end
-
-NS.Pixel = Pixel
-
-local function Clamp(value, minValue, maxValue)
-    return math.max(minValue, math.min(maxValue, value))
-end
-
-local function NormalizeScalePercent(value)
-    value = tonumber(value) or SCALE_DEFAULT_PERCENT
-    value = Pixel(value / SCALE_STEP_PERCENT) * SCALE_STEP_PERCENT
-    return Clamp(value, SCALE_MIN_PERCENT, SCALE_MAX_PERCENT)
-end
-
-local function GetScalePercent()
-    local percent = NS.db and NS.db.scalePercent or SCALE_DEFAULT_PERCENT
-    return NormalizeScalePercent(percent)
-end
-
-local function GetLayoutScale()
-    return GetScalePercent() / 100
-end
-
-local function ScalePixel(value)
-    return Pixel((value or 0) * GetLayoutScale())
-end
-
-local function GetScaledBounds(x, y, width, height)
-    local scale = GetLayoutScale()
-    local left = Pixel((x or 0) * scale)
-    local top = Pixel((y or 0) * scale)
-    local right = Pixel(((x or 0) + (width or 0)) * scale)
-    local bottom = Pixel(((y or 0) + (height or 0)) * scale)
-
-    return left, top, math.max(1, right - left), math.max(1, bottom - top)
-end
-
-local function FormatScalePercent(value)
-    return ("%d%%"):format(NormalizeScalePercent(value))
-end
-
-local function GetPixelToUIUnitFactor()
-    if PixelUtil and PixelUtil.GetPixelToUIUnitFactor then
-        return PixelUtil.GetPixelToUIUnitFactor()
-    end
-
-    local _, physicalHeight = GetPhysicalScreenSize()
-    if physicalHeight and physicalHeight > 0 then
-        return 768 / physicalHeight
-    end
-
-    return UIParent:GetEffectiveScale()
-end
-
-local function SetPixelPoint(frame, point, relativeTo, relativePoint, x, y)
-    frame:SetPoint(point, relativeTo, relativePoint, Pixel(x), Pixel(y))
-end
-
-local function SetPixelSize(frame, width, height)
-    frame:SetSize(Pixel(width), Pixel(height))
-end
-
-local function ApplyLayoutRecord(record)
-    local region = record.region
-    if not region then
-        return
-    end
-
-    if record.kind == "bounds" then
-        local x, y, width, height = GetScaledBounds(record.x, record.y, record.width, record.height)
-        region:ClearAllPoints()
-        SetPixelPoint(region, "TOPLEFT", record.relativeTo, "TOPLEFT", x, -y)
-        SetPixelSize(region, width, height)
-    elseif record.kind == "box" then
-        region:ClearAllPoints()
-        SetPixelPoint(region, record.point, record.relativeTo, record.relativePoint, ScalePixel(record.x), ScalePixel(record.y))
-        SetPixelSize(region, ScalePixel(record.width), ScalePixel(record.height))
-    elseif record.kind == "size" then
-        SetPixelSize(region, ScalePixel(record.width), ScalePixel(record.height))
-    elseif record.kind == "points" then
-        region:ClearAllPoints()
-        for _, point in ipairs(record.points) do
-            SetPixelPoint(region, point.point, point.relativeTo, point.relativePoint, ScalePixel(point.x), ScalePixel(point.y))
-        end
-        if record.height then
-            region:SetHeight(ScalePixel(record.height))
-        end
-        if record.width then
-            region:SetWidth(ScalePixel(record.width))
-        end
-    elseif record.kind == "gridline" then
-        local scale = GetLayoutScale()
-        local line = record.line
-        local thickness = math.max(1, Pixel(line.thickness or 1))
-        local thicknessOffset = math.floor(thickness / 2)
-
-        region:ClearAllPoints()
-        if line.vertical then
-            local x = Pixel(line.x * scale)
-            local y1 = Pixel(line.y1 * scale)
-            local y2 = Pixel(line.y2 * scale)
-            SetPixelPoint(region, "TOPLEFT", record.relativeTo, "TOPLEFT", x - thicknessOffset, -y1)
-            SetPixelSize(region, thickness, math.max(1, y2 - y1))
-        else
-            local y = Pixel(line.y * scale)
-            local x1 = Pixel(line.x1 * scale)
-            local x2 = Pixel(line.x2 * scale)
-            SetPixelPoint(region, "TOPLEFT", record.relativeTo, "TOPLEFT", x1, -(y - thicknessOffset))
-            SetPixelSize(region, math.max(1, x2 - x1), thickness)
-        end
-    end
-end
-
-local function ApplyFontRecord(record)
-    local fontString = record.fontString
-    if not fontString then
-        return
-    end
-
-    local size = math.max(1, ScalePixel(record.size))
-    fontString:SetFont(record.path, size, record.flags or "")
-end
-
-local function RegisterLayoutRecord(record)
-    if ScaleLayout.deferredDepth > 0
-        or (record.region and record.region.deferScaleLayout)
-        or (record.relativeTo and record.relativeTo.deferScaleLayout)
-    then
-        record.deferScaleLayout = true
-    end
-
-    NS.layoutRecords = NS.layoutRecords or {}
-    NS.layoutRecords[#NS.layoutRecords + 1] = record
-    ApplyLayoutRecord(record)
-    return record
-end
-
-local function RegisterFontRecord(record)
-    if ScaleLayout.deferredDepth > 0
-        or (record.fontString and record.fontString.deferScaleLayout)
-    then
-        record.deferScaleLayout = true
-    end
-
-    NS.layoutFonts = NS.layoutFonts or {}
-    NS.layoutFonts[#NS.layoutFonts + 1] = record
-    ApplyFontRecord(record)
-    return record
-end
-
-local function SetLayoutBounds(region, relativeTo, x, y, width, height)
-    return RegisterLayoutRecord({
-        kind = "bounds",
-        region = region,
-        relativeTo = relativeTo,
-        x = x,
-        y = y,
-        width = width,
-        height = height,
-    })
-end
-
-local function SetLayoutBox(region, point, relativeTo, relativePoint, x, y, width, height)
-    return RegisterLayoutRecord({
-        kind = "box",
-        region = region,
-        point = point,
-        relativeTo = relativeTo,
-        relativePoint = relativePoint,
-        x = x,
-        y = y,
-        width = width,
-        height = height,
-    })
-end
-
-local function SetLayoutSize(region, width, height)
-    return RegisterLayoutRecord({
-        kind = "size",
-        region = region,
-        width = width,
-        height = height,
-    })
-end
-
-local function SetLayoutPoints(region, points, width, height)
-    return RegisterLayoutRecord({
-        kind = "points",
-        region = region,
-        points = points,
-        width = width,
-        height = height,
-    })
-end
-
-local VALID_FONT_FLAGS = {
-    [""] = true,
-    OUTLINE = true,
-    THICKOUTLINE = true,
-    OUTLINESLUG = true,
-    MONOCHROMEOUTLINE = true,
-    MONOCHROMETHICKOUTLINE = true,
-}
-
-local function NormalizeFontFlagString(value)
-    local flags = tostring(value or ""):upper():gsub("[%s,]+", "")
-    if VALID_FONT_FLAGS[flags] then
-        return flags
-    end
-
-    return ""
-end
-
-local function NormalizeFontOutline(value)
-    if value == true then
-        return "OUTLINE"
-    end
-    if value == false or value == nil then
-        return ""
-    end
-
-    local outline = tostring(value):lower()
-    if outline == "normal" or outline == "outline" then
-        return "OUTLINE"
-    end
-    if outline == "thick" or outline == "thickoutline" then
-        return "THICKOUTLINE"
-    end
-    if outline == "slug" or outline == "outlineslug" then
-        return "OUTLINESLUG"
-    end
-    if outline == "mono" or outline == "monochrome" or outline == "monochromeoutline" then
-        return "MONOCHROMEOUTLINE"
-    end
-    if outline == "monothick" or outline == "monochromethick" or outline == "monochromethickoutline" then
-        return "MONOCHROMETHICKOUTLINE"
-    end
-
-    return ""
-end
-
-local function FontFlags(font)
-    if type(font) ~= "table" then
-        return ""
-    end
-
-    if font.flags ~= nil then
-        return NormalizeFontFlagString(font.flags)
-    end
-
-    local outlineValue = font.outline
-    if outlineValue == nil then
-        outlineValue = font.border
-    end
-
-    local outline = NormalizeFontOutline(outlineValue)
-    local monochrome = font.monochrome == true
-    local slug = font.slug == true
-
-    if outline == "OUTLINESLUG" or outline == "MONOCHROMEOUTLINE" or outline == "MONOCHROMETHICKOUTLINE" then
-        return outline
-    end
-
-    if monochrome then
-        if outline == "THICKOUTLINE" then
-            return "MONOCHROMETHICKOUTLINE"
-        end
-        if outline == "OUTLINE" then
-            return "MONOCHROMEOUTLINE"
-        end
-        return ""
-    end
-
-    if outline == "THICKOUTLINE" then
-        return "THICKOUTLINE"
-    end
-    if outline == "OUTLINE" then
-        return slug and "OUTLINESLUG" or "OUTLINE"
-    end
-
-    return ""
-end
-
-local function FontSize(font, fallbackSize)
-    if type(font) == "table" then
-        return tonumber(font.size) or fallbackSize
-    end
-
-    return fallbackSize
-end
-
-local function FontWithFallbackSize(font, fallbackSize)
-    if type(font) ~= "table" then
-        return { size = fallbackSize }
-    end
-
-    local copy = {}
-    for key, value in pairs(font) do
-        copy[key] = value
-    end
-    if copy.size == nil then
-        copy.size = fallbackSize
-    end
-
-    return copy
-end
-
-local function ResolveTextFont(font, fallbackSize, bold)
-    local size = math.max(1, FontSize(font, fallbackSize or 12))
-    local path = bold and NS.FONT_BOLD_PATH or NS.FONT_PATH
-    if type(font) == "table" and type(font.path) == "string" then
-        path = font.path
-    end
-
-    return {
-        path = path,
-        size = size,
-        flags = FontFlags(font),
-    }
-end
-
-local function RefreshScaledLayout(includeDeferred)
-    for _, record in ipairs(NS.layoutRecords or {}) do
-        if includeDeferred or not record.deferScaleLayout then
-            ApplyLayoutRecord(record)
-        end
-    end
-
-    for _, record in ipairs(NS.layoutFonts or {}) do
-        if includeDeferred or not record.deferScaleLayout then
-            ApplyFontRecord(record)
-        end
-    end
-
-    if NS.scaleButtonText then
-        NS.scaleButtonText:SetText(FormatScalePercent(GetScalePercent()))
-    end
-
-    if includeDeferred then
-        for _, scrollFrame in ipairs(NS.tableBodyScrolls or {}) do
-            local range = scrollFrame:GetVerticalScrollRange() or 0
-            local current = scrollFrame:GetVerticalScroll() or 0
-            scrollFrame:SetVerticalScroll(Clamp(current, 0, range))
-        end
-    end
-end
-
-function ScaleLayout.WithDeferred(callback)
-    if type(callback) ~= "function" then
-        return
-    end
-
-    ScaleLayout.deferredDepth = ScaleLayout.deferredDepth + 1
-    local ok, err = pcall(callback)
-    ScaleLayout.deferredDepth = math.max(0, ScaleLayout.deferredDepth - 1)
-    if not ok then
-        error(err, 0)
-    end
-end
-
-function ScaleLayout.ScheduleDeferredRefresh()
-    ScaleLayout.serial = ScaleLayout.serial + 1
-    local serial = ScaleLayout.serial
-
-    if not C_Timer or not C_Timer.After then
-        RefreshScaledLayout(true)
-        ScaleLayout.EndPreview()
-        return
-    end
-
-    C_Timer.After(ScaleLayout.debounceSeconds, function()
-        if serial == ScaleLayout.serial then
-            RefreshScaledLayout(true)
-            ScaleLayout.EndPreview()
-        end
-    end)
-end
-
-function ScaleLayout.BeginPreview()
-    if not NS.tableLayer or not NS.tablePlaceholderLayer then
-        return
-    end
-
-    if ScaleLayout.previewActive then
-        return
-    end
-
-    ScaleLayout.previewActive = true
-    NS.tableLayer:Hide()
-    NS.tablePlaceholderLayer:Show()
-end
-
-function ScaleLayout.EndPreview()
-    if not ScaleLayout.previewActive then
-        return
-    end
-
-    ScaleLayout.previewActive = false
-    if NS.tablePlaceholderLayer then
-        NS.tablePlaceholderLayer:Hide()
-    end
-    if NS.tableLayer then
-        NS.tableLayer:Show()
-    end
-end
-
-local function ApplyTexturePixelSnapping(texture)
-    if texture.SetSnapToPixelGrid then
-        texture:SetSnapToPixelGrid(false)
-    end
-    if texture.SetTexelSnappingBias then
-        texture:SetTexelSnappingBias(0)
-    end
-end
 
 local function AcquireGridLineTexture(overlay)
     overlay.lines = overlay.lines or {}
@@ -484,7 +20,7 @@ local function AcquireGridLineTexture(overlay)
         overlay.linePool[#overlay.linePool] = nil
     else
         texture = overlay:CreateTexture(nil, "ARTWORK")
-        ApplyTexturePixelSnapping(texture)
+        UI.ApplyTexturePixelSnapping(texture)
     end
 
     texture:Show()
@@ -510,11 +46,11 @@ end
 
 local function RegisterGridLineTexture(overlay, line)
     local texture = AcquireGridLineTexture(overlay)
-    texture:SetColorTexture(GRID_COLOR[1], GRID_COLOR[2], GRID_COLOR[3], line.alpha or GRID_COLOR[4])
+    texture:SetColorTexture(Grid.color[1], Grid.color[2], Grid.color[3], line.alpha or Grid.color[4])
     if texture.layoutRecord then
         texture.layoutRecord.relativeTo = overlay
         texture.layoutRecord.line = line
-        ApplyLayoutRecord(texture.layoutRecord)
+        UI.ApplyLayoutRecord(texture.layoutRecord)
     else
         texture.layoutRecord = {
             kind = "gridline",
@@ -523,7 +59,7 @@ local function RegisterGridLineTexture(overlay, line)
             relativeTo = overlay,
             line = line,
         }
-        RegisterLayoutRecord(texture.layoutRecord)
+        UI.RegisterLayoutRecord(texture.layoutRecord)
     end
 end
 
@@ -565,9 +101,9 @@ end
 
 local function AddGridLineRenderSegments(lines, line)
     if line.style == "dotted" then
-        AddPatternedGridLineSegments(lines, line, DOTTED_GRID_DOT, DOTTED_GRID_GAP)
+        AddPatternedGridLineSegments(lines, line, Grid.dottedDot, Grid.dottedGap)
     elseif line.style == "dashed" then
-        AddPatternedGridLineSegments(lines, line, DASHED_GRID_DASH, DASHED_GRID_GAP)
+        AddPatternedGridLineSegments(lines, line, Grid.dashedDash, Grid.dashedGap)
     else
         lines[#lines + 1] = CopyGridLine(line)
     end
@@ -622,9 +158,9 @@ end
 
 local function RegisterStyledGridLine(overlay, line)
     if line.style == "dotted" then
-        RegisterPatternedGridLine(overlay, line, DOTTED_GRID_DOT, DOTTED_GRID_GAP)
+        RegisterPatternedGridLine(overlay, line, Grid.dottedDot, Grid.dottedGap)
     elseif line.style == "dashed" then
-        RegisterPatternedGridLine(overlay, line, DASHED_GRID_DASH, DASHED_GRID_GAP)
+        RegisterPatternedGridLine(overlay, line, Grid.dashedDash, Grid.dashedGap)
     elseif line.style == "solid" then
         RegisterGridLineTexture(overlay, line)
     else
@@ -769,7 +305,7 @@ local function NormalizeBorderStyle(value)
     local styleName
     local thickness
     local valuePriority
-    local priority = EXPLICIT_BORDER_PRIORITY
+    local priority = BorderPriority.explicit
 
     if type(value) == "table" then
         styleName = value.style or value.type or value[1]
@@ -789,7 +325,7 @@ local function NormalizeBorderStyle(value)
         return {
             style = "none",
             thickness = 0,
-            priority = EXPLICIT_NONE_PRIORITY,
+            priority = BorderPriority.explicitNone,
         }
     end
 
@@ -809,9 +345,9 @@ local function NormalizeBorderStyle(value)
         return nil
     end
 
-    thickness = math.max(1, Pixel(tonumber(thickness) or 1))
+    thickness = math.max(1, UI.Pixel(tonumber(thickness) or 1))
     if thickness >= 3 then
-        priority = EXPLICIT_THICK_BORDER_PRIORITY
+        priority = BorderPriority.explicitThick
     end
 
     return {
@@ -887,19 +423,19 @@ local function RegisterCellCoordinate(parent, cell, cellData, x, y, width, heigh
     cell.gridToRow = span.toRow
     cell.gridSpan = span
     cell.gridBounds = {
-        x = Pixel(x),
-        y = Pixel(y),
-        width = Pixel(width),
-        height = Pixel(height),
+        x = UI.Pixel(x),
+        y = UI.Pixel(y),
+        width = UI.Pixel(width),
+        height = UI.Pixel(height),
     }
 end
 
 local function BorderLineKey(line)
     if line.vertical then
-        return ("v:%d:%d:%d"):format(Pixel(line.x), Pixel(math.min(line.y1, line.y2)), Pixel(math.max(line.y1, line.y2)))
+        return ("v:%d:%d:%d"):format(UI.Pixel(line.x), UI.Pixel(math.min(line.y1, line.y2)), UI.Pixel(math.max(line.y1, line.y2)))
     end
 
-    return ("h:%d:%d:%d"):format(Pixel(line.y), Pixel(math.min(line.x1, line.x2)), Pixel(math.max(line.x1, line.x2)))
+    return ("h:%d:%d:%d"):format(UI.Pixel(line.y), UI.Pixel(math.min(line.x1, line.x2)), UI.Pixel(math.max(line.x1, line.x2)))
 end
 
 local function BlockGridLine(parent, key, priority)
@@ -927,9 +463,9 @@ local function StoreGridLine(parent, line, borderStyle)
 
     line.style = borderStyle.style
     line.thickness = borderStyle.thickness or 1
-    line.priority = borderStyle.priority or EXPLICIT_BORDER_PRIORITY
+    line.priority = borderStyle.priority or BorderPriority.explicit
     line.order = borderStyle.order or 0
-    line.alpha = borderStyle.alpha or GRID_COLOR[4]
+    line.alpha = borderStyle.alpha or Grid.color[4]
 
     local blockedPriority = parent.gridLineBlocks and parent.gridLineBlocks[key]
     if blockedPriority and (line.priority or 0) <= blockedPriority then
@@ -1271,7 +807,7 @@ local function LayerRenderOrder(layerKey)
     local layer = LayerData(layerKey)
     local order = tonumber(layer and layer.order) or 0
     if IsLayerActive(layerKey) then
-        order = order + ACTIVE_LAYER_ORDER_BONUS
+        order = order + LayerState.activeOrderBonus
     end
 
     return order
@@ -1293,10 +829,10 @@ local function LayerVisualAlpha(layerKey)
     end
 
     if IsLayerActive(layerKey) then
-        return Clamp(tonumber(layer and layer.activeAlpha) or 1, 0, 1)
+        return UI.Clamp(tonumber(layer and layer.activeAlpha) or 1, 0, 1)
     end
 
-    return Clamp(tonumber(layer and layer.inactiveAlpha) or DEFAULT_INACTIVE_LAYER_ALPHA, 0, 1)
+    return UI.Clamp(tonumber(layer and layer.inactiveAlpha) or LayerState.defaultInactiveAlpha, 0, 1)
 end
 
 local function IsLayerVisible(layerKey)
@@ -1344,34 +880,34 @@ local function EnsureColorBlock(parent, blockData, order)
         end
         if blockData.border ~= nil then
             existing.border = blockData.border
-            existing.borderStyle = CopyBorderStyle(blockData.border, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+            existing.borderStyle = CopyBorderStyle(blockData.border, BorderPriority.block + (blockData.priority or 0), order or existing.order)
         end
         if blockData.innerBorder ~= nil then
             existing.innerBorder = blockData.innerBorder
-            existing.innerBorderStyle = CopyBorderStyle(blockData.innerBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+            existing.innerBorderStyle = CopyBorderStyle(blockData.innerBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
         end
         if blockData.innerRowBorder ~= nil then
             existing.innerRowBorder = blockData.innerRowBorder
-            existing.innerRowBorderStyle = CopyBorderStyle(blockData.innerRowBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+            existing.innerRowBorderStyle = CopyBorderStyle(blockData.innerRowBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
         end
         if blockData.innerColBorder ~= nil then
             existing.innerColBorder = blockData.innerColBorder
-            existing.innerColBorderStyle = CopyBorderStyle(blockData.innerColBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+            existing.innerColBorderStyle = CopyBorderStyle(blockData.innerColBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
         end
         if blockData.parentBlockId ~= nil then
             existing.parentBlockId = blockData.parentBlockId
         end
         if blockData.parentInnerBorder ~= nil then
             existing.parentInnerBorder = blockData.parentInnerBorder
-            existing.parentInnerBorderStyle = CopyBorderStyle(blockData.parentInnerBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+            existing.parentInnerBorderStyle = CopyBorderStyle(blockData.parentInnerBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
         end
         if blockData.parentInnerRowBorder ~= nil then
             existing.parentInnerRowBorder = blockData.parentInnerRowBorder
-            existing.parentInnerRowBorderStyle = CopyBorderStyle(blockData.parentInnerRowBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+            existing.parentInnerRowBorderStyle = CopyBorderStyle(blockData.parentInnerRowBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
         end
         if blockData.parentInnerColBorder ~= nil then
             existing.parentInnerColBorder = blockData.parentInnerColBorder
-            existing.parentInnerColBorderStyle = CopyBorderStyle(blockData.parentInnerColBorder, BLOCK_BORDER_PRIORITY + (blockData.priority or 0), order or existing.order)
+            existing.parentInnerColBorderStyle = CopyBorderStyle(blockData.parentInnerColBorder, BorderPriority.block + (blockData.priority or 0), order or existing.order)
         end
         if blockData.layer ~= nil then
             existing.layer = blockData.layer
@@ -1394,13 +930,13 @@ local function EnsureColorBlock(parent, blockData, order)
         priority = blockData.priority or 0,
         order = order or 0,
     }
-    block.borderStyle = CopyBorderStyle(block.border, BLOCK_BORDER_PRIORITY + block.priority, block.order)
-    block.innerBorderStyle = CopyBorderStyle(block.innerBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
-    block.innerRowBorderStyle = CopyBorderStyle(block.innerRowBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
-    block.innerColBorderStyle = CopyBorderStyle(block.innerColBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
-    block.parentInnerBorderStyle = CopyBorderStyle(block.parentInnerBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
-    block.parentInnerRowBorderStyle = CopyBorderStyle(block.parentInnerRowBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
-    block.parentInnerColBorderStyle = CopyBorderStyle(block.parentInnerColBorder, BLOCK_BORDER_PRIORITY + block.priority, block.order)
+    block.borderStyle = CopyBorderStyle(block.border, BorderPriority.block + block.priority, block.order)
+    block.innerBorderStyle = CopyBorderStyle(block.innerBorder, BorderPriority.block + block.priority, block.order)
+    block.innerRowBorderStyle = CopyBorderStyle(block.innerRowBorder, BorderPriority.block + block.priority, block.order)
+    block.innerColBorderStyle = CopyBorderStyle(block.innerColBorder, BorderPriority.block + block.priority, block.order)
+    block.parentInnerBorderStyle = CopyBorderStyle(block.parentInnerBorder, BorderPriority.block + block.priority, block.order)
+    block.parentInnerRowBorderStyle = CopyBorderStyle(block.parentInnerRowBorder, BorderPriority.block + block.priority, block.order)
+    block.parentInnerColBorderStyle = CopyBorderStyle(block.parentInnerColBorder, BorderPriority.block + block.priority, block.order)
     parent.colorBlocksById[id] = block
     return block
 end
@@ -1449,7 +985,7 @@ local function ResolveCellVisualAlpha(cellData)
         return 1
     end
 
-    return Clamp(alpha, 0, 1)
+    return UI.Clamp(alpha, 0, 1)
 end
 
 local function ApplyCellVisualStyle(cell, bg, alpha)
@@ -1459,15 +995,15 @@ local function ApplyCellVisualStyle(cell, bg, alpha)
     end
 
     bg = bg or "blank"
-    alpha = Clamp(tonumber(alpha) or 1, 0, 1)
+    alpha = UI.Clamp(tonumber(alpha) or 1, 0, 1)
     cellData.resolvedBg = bg
     cellData.resolvedAlpha = alpha
 
     if cell.bg then
-        cell.bg:SetColorTexture(Color(bg))
+        cell.bg:SetColorTexture(UI.Color(bg))
     end
     if cell.text then
-        cell.text:SetTextColor(TextColorFor(bg))
+        cell.text:SetTextColor(UI.TextColorFor(bg))
     end
     if cell.SetAlpha then
         cell:SetAlpha(alpha)
@@ -1510,13 +1046,13 @@ local function AssignCellToBlock(parent, cell, block)
     end
 
     if block.layer then
-        SetCellStyleLayer(cell.cellData, "layer", STYLE_LAYER_LAYER, {
+        SetCellStyleLayer(cell.cellData, "layer", StyleLayer.layer, {
             alpha = LayerVisualAlpha(block.layer),
         })
     end
 
     if block.bg then
-        SetCellStyleLayer(cell.cellData, "block", STYLE_LAYER_BLOCK, {
+        SetCellStyleLayer(cell.cellData, "block", StyleLayer.block, {
             bg = block.bg,
         })
     end
@@ -1601,7 +1137,7 @@ local function DrawColorBlockBorders(parent)
                     else
                         StoreGridLine(parent, GetCellEdgeLine(cell, edge), {
                             style = "none",
-                            priority = BLOCK_BORDER_PRIORITY + MaxBlockPriority(block, neighborBlock),
+                            priority = BorderPriority.block + MaxBlockPriority(block, neighborBlock),
                             order = block.order or 0,
                         })
                     end
@@ -1614,7 +1150,7 @@ local function DrawColorBlockBorders(parent)
 end
 
 local function StoreExplicitEdge(parent, cell, edge, rule, order)
-    local style = CopyBorderStyle(rule.style, rule.priority or EXPLICIT_BORDER_PRIORITY, order)
+    local style = CopyBorderStyle(rule.style, rule.priority or BorderPriority.explicit, order)
     StoreGridLine(parent, GetCellEdgeLine(cell, edge), style)
 end
 
@@ -1643,7 +1179,7 @@ local function CellBorderEdgePriority(border, edgeStyle)
         return border.priority
     end
 
-    return CELL_BORDER_PRIORITY
+    return BorderPriority.cell
 end
 
 local function DrawCellBorderOverrides(parent)
@@ -1662,7 +1198,7 @@ local function DrawCellBorderOverrides(parent)
                                 StoreExplicitEdge(parent, cell, edge, {
                                     style = edgeStyle,
                                     priority = CellBorderEdgePriority(border, edgeStyle),
-                                }, CELL_BORDER_ORDER)
+                                }, BorderPriority.cellOrder)
                             end
                         end
                     end
@@ -1874,17 +1410,17 @@ end
 local function DrawExplicitBorderRules(parent)
     for index, rule in ipairs(NS.Data.borderRules or {}) do
         if rule.kind == "rowBorders" then
-            ApplyRowBordersRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+            ApplyRowBordersRule(parent, rule, BorderPriority.explicit + index)
         elseif rule.kind == "columnBorders" then
-            ApplyColumnBordersRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+            ApplyColumnBordersRule(parent, rule, BorderPriority.explicit + index)
         elseif rule.kind == "tableBorder" then
-            ApplyTableBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+            ApplyTableBorderRule(parent, rule, BorderPriority.explicit + index)
         elseif rule.kind == "betweenCellsBorder" then
-            ApplyBetweenCellsBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+            ApplyBetweenCellsBorderRule(parent, rule, BorderPriority.explicit + index)
         elseif rule.kind == "columnBorder" then
-            ApplyColumnBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+            ApplyColumnBorderRule(parent, rule, BorderPriority.explicit + index)
         elseif rule.kind == "rowBorder" then
-            ApplyRowBorderRule(parent, rule, EXPLICIT_BORDER_PRIORITY + index)
+            ApplyRowBorderRule(parent, rule, BorderPriority.explicit + index)
         end
     end
 end
@@ -2106,7 +1642,7 @@ local function DrawTableBodyViewportBorder(scroll, tableDefinition, width, visib
         return
     end
 
-    local height = math.max(1, visibleRows * ROW_HEIGHT)
+    local height = math.max(1, visibleRows * Metrics.rowHeight)
     local holder = {}
     for index, rule in ipairs(NS.Data.borderRules or {}) do
         if rule.kind == "tableBorder" and ShouldApplyRuleToTable(rule, tableDefinition.key) then
@@ -2115,7 +1651,7 @@ local function DrawTableBodyViewportBorder(scroll, tableDefinition, width, visib
                 y = height,
                 x1 = 0,
                 x2 = width,
-            }, CopyBorderStyle(rule.style, rule.priority or EXPLICIT_BORDER_PRIORITY, EXPLICIT_BORDER_PRIORITY + index))
+            }, CopyBorderStyle(rule.style, rule.priority or BorderPriority.explicit, BorderPriority.explicit + index))
         end
     end
 
@@ -2137,152 +1673,10 @@ local function DrawTableBodyViewportBorder(scroll, tableDefinition, width, visib
     scroll.tableBorderOverlay = overlay
 end
 
-local function GetPhysicalSize()
-    local width, height
-    if GetPhysicalScreenSize then
-        width, height = GetPhysicalScreenSize()
-    end
-
-    if not width or width <= 0 or not height or height <= 0 then
-        local scale = UIParent:GetEffectiveScale()
-        local factor = GetPixelToUIUnitFactor()
-        width = UIParent:GetWidth() * scale / factor
-        height = UIParent:GetHeight() * scale / factor
-    end
-
-    return Pixel(width), Pixel(height)
-end
-
-local function ApplyPixelRootScale(root)
-    local pixelScale = GetPixelToUIUnitFactor()
-
-    if root.SetIgnoreParentScale then
-        root:SetIgnoreParentScale(true)
-        root:SetScale(pixelScale)
-    else
-        root:SetScale(pixelScale / UIParent:GetEffectiveScale())
-    end
-end
-
-local function UpdatePixelRoot(root)
-    local width, height = GetPhysicalSize()
-    ApplyPixelRootScale(root)
-    SetPixelSize(root, width, height)
-    root:ClearAllPoints()
-    root:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-end
-
-local function GetPixelRoot()
-    if NS.pixelRoot then
-        return NS.pixelRoot
-    end
-
-    local root = CreateFrame("Frame", "LootLevelPixelRoot", UIParent)
-    root:SetFrameStrata("HIGH")
-    root:SetFrameLevel(1)
-    UpdatePixelRoot(root)
-
-    root:RegisterEvent("DISPLAY_SIZE_CHANGED")
-    root:RegisterEvent("UI_SCALE_CHANGED")
-    root:RegisterEvent("PLAYER_ENTERING_WORLD")
-    root:SetScript("OnEvent", function(self)
-        UpdatePixelRoot(self)
-        if NS.frame then
-            NS:RestoreFramePosition(NS.frame)
-        end
-    end)
-
-    NS.pixelRoot = root
-    return root
-end
-
-local function SnapFramePosition(frame)
-    local point, relativeTo, relativePoint, x, y = frame:GetPoint(1)
-    frame:ClearAllPoints()
-    frame:SetPoint(
-        point or "CENTER",
-        relativeTo or NS.pixelRoot or UIParent,
-        relativePoint or "CENTER",
-        Pixel(x),
-        Pixel(y)
-    )
-end
-
-Color = function(name)
-    local color = type(name) == "table" and name or NS.Colors[name or "blank"] or NS.Colors.blank
-    return color[1], color[2], color[3], color[4] or 1
-end
-
-TextColorFor = function(colorName)
-    if colorName == "blank" or colorName == "panel" or colorName == "frame" then
-        return 1, 1, 1, 1
-    end
-
-    return 0, 0, 0, 1
-end
-
-local function CreateText(parent, text, font, colorName, justifyH, justifyV, bold)
-    local fs = parent:CreateFontString(nil, "OVERLAY")
-    local resolvedFont = ResolveTextFont(font, 12, bold)
-    RegisterFontRecord({
-        fontString = fs,
-        path = resolvedFont.path,
-        size = resolvedFont.size,
-        flags = resolvedFont.flags,
-    })
-    fs:SetText(text or "")
-    fs:SetJustifyH(justifyH or "CENTER")
-    fs:SetJustifyV(justifyV or "MIDDLE")
-    fs:SetTextColor(Color(colorName or "black"))
-    if fs.SetWordWrap then
-        fs:SetWordWrap(false)
-    end
-    return fs
-end
-
-NS.UI = NS.UI or {}
-NS.UI.FrameBackdrop = FRAME_BACKDROP
-NS.UI.Metrics = {
-    frameWidth = FRAME_WIDTH,
-    frameHeight = FRAME_HEIGHT,
-    padding = PADDING,
-    titleHeight = TITLE_HEIGHT,
-    footerHeight = FOOTER_HEIGHT,
-}
-NS.UI.Scale = {
-    minPercent = SCALE_MIN_PERCENT,
-    maxPercent = SCALE_MAX_PERCENT,
-    stepPercent = SCALE_STEP_PERCENT,
-}
-NS.UI.Color = Color
-NS.UI.CreateText = CreateText
-NS.UI.SetLayoutBox = SetLayoutBox
-NS.UI.SetLayoutSize = SetLayoutSize
-NS.UI.SetLayoutPoints = SetLayoutPoints
-NS.UI.UpdateLayoutRecord = function(record, values)
-    if not record or type(values) ~= "table" then
-        return record
-    end
-
-    for key, value in pairs(values) do
-        record[key] = value
-    end
-    ApplyLayoutRecord(record)
-    return record
-end
-NS.UI.ApplyTexturePixelSnapping = ApplyTexturePixelSnapping
-NS.UI.GetScalePercent = GetScalePercent
-NS.UI.FormatScalePercent = FormatScalePercent
-NS.UI.NormalizeScalePercent = NormalizeScalePercent
-NS.UI.GetPixelRoot = GetPixelRoot
-NS.UI.SnapFramePosition = SnapFramePosition
-NS.UI.LayerDisplayName = LayerDisplayName
-NS.UI.LayerSetDisplayName = LayerSetDisplayName
-NS.UI.PrewarmLayerRenderCaches = function()
+UI.LayerDisplayName = LayerDisplayName
+UI.LayerSetDisplayName = LayerSetDisplayName
+UI.PrewarmLayerRenderCaches = function()
     RenderCache.Prewarm()
-end
-NS.UI.WithDeferredScaleLayout = function(callback)
-    ScaleLayout.WithDeferred(callback)
 end
 
 local function BuildTooltipLines(cellData, fallbackLabel)
@@ -2411,9 +1805,9 @@ local function ScrollTableBodyByWheel(scroll, delta)
         return
     end
 
-    local amount = ScalePixel(ROW_HEIGHT * 3)
+    local amount = UI.ScalePixel(Metrics.rowHeight * 3)
     local nextOffset = (scroll:GetVerticalScroll() or 0) - ((delta or 0) * amount)
-    scroll:SetVerticalScroll(Clamp(nextOffset, 0, scroll:GetVerticalScrollRange() or 0))
+    scroll:SetVerticalScroll(UI.Clamp(nextOffset, 0, scroll:GetVerticalScrollRange() or 0))
     if scroll.bodyScrollGroup and not scroll.syncingBodyScroll then
         local onVerticalScroll = scroll:GetScript("OnVerticalScroll")
         if onVerticalScroll then
@@ -2442,15 +1836,15 @@ local function GetUnscaledFontMeasurement(fontString, methodName)
 
     local value = method(fontString)
     if value and value > 0 then
-        return value / GetLayoutScale()
+        return value / UI.GetLayoutScale()
     end
 
     return nil
 end
 
 local function CreateVerticalText(parent, x, y, width, height, text, font, bold)
-    local resolvedFontSize = FontSize(font, 13)
-    local fs = CreateText(parent, text, FontWithFallbackSize(font, 13), "black", "CENTER", "MIDDLE", bold)
+    local resolvedFontSize = UI.FontSize(font, 13)
+    local fs = UI.CreateText(parent, text, UI.FontWithFallbackSize(font, 13), "black", "CENTER", "MIDDLE", bold)
 
     if fs.SetRotation then
         local maxTextWidth = math.max(1, height)
@@ -2458,12 +1852,12 @@ local function CreateVerticalText(parent, x, y, width, height, text, font, bold)
         local stringWidth = GetUnscaledFontMeasurement(fs, "GetStringWidth")
         local stringHeight = GetUnscaledFontMeasurement(fs, "GetStringHeight")
             or GetUnscaledFontMeasurement(fs, "GetLineHeight")
-        local labelWidth = math.min(maxTextWidth, math.max(1, (stringWidth or maxTextWidth) + MERGED_VERTICAL_LABEL_WIDTH_PADDING))
-        local labelHeight = math.min(maxTextHeight, math.max(1, (stringHeight or resolvedFontSize) + MERGED_VERTICAL_LABEL_HEIGHT_PADDING))
-        local centerX = x + (width / 2) + MERGED_VERTICAL_LABEL_NUDGE_X
-        local centerY = y + (height / 2) + MERGED_VERTICAL_LABEL_NUDGE_Y
+        local labelWidth = math.min(maxTextWidth, math.max(1, (stringWidth or maxTextWidth) + MergedVerticalLabel.widthPadding))
+        local labelHeight = math.min(maxTextHeight, math.max(1, (stringHeight or resolvedFontSize) + MergedVerticalLabel.heightPadding))
+        local centerX = x + (width / 2) + MergedVerticalLabel.nudgeX
+        local centerY = y + (height / 2) + MergedVerticalLabel.nudgeY
 
-        SetLayoutBox(
+        UI.SetLayoutBox(
             fs,
             "CENTER",
             parent,
@@ -2475,7 +1869,7 @@ local function CreateVerticalText(parent, x, y, width, height, text, font, bold)
         )
         fs:SetRotation(math.pi / 2)
     else
-        SetLayoutBounds(fs, parent, x, y, width, height)
+        UI.SetLayoutBounds(fs, parent, x, y, width, height)
         fs:SetText((text or ""):gsub("(.)", "%1\n"))
     end
 
@@ -2484,25 +1878,25 @@ end
 
 local function CreateCell(parent, x, y, width, height, cellData)
     cellData = cellData or {}
-    SetCellStyleLayer(cellData, "default", STYLE_LAYER_DEFAULT, {
+    SetCellStyleLayer(cellData, "default", StyleLayer.default, {
         bg = cellData.defaultBg or "blank",
     })
-    SetCellStyleLayer(cellData, "cell", STYLE_LAYER_CELL, {
+    SetCellStyleLayer(cellData, "cell", StyleLayer.cell, {
         bg = cellData.bg,
     })
 
     local cell = CreateFrame("Button", nil, parent)
-    SetLayoutBounds(cell, parent, x, y, width, height)
+    UI.SetLayoutBounds(cell, parent, x, y, width, height)
     cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     cell.cellData = cellData
 
     local bg = cell:CreateTexture(nil, "BACKGROUND")
-    ApplyTexturePixelSnapping(bg)
+    UI.ApplyTexturePixelSnapping(bg)
     bg:SetAllPoints(cell)
     cell.bg = bg
 
     local highlight = cell:CreateTexture(nil, "HIGHLIGHT")
-    ApplyTexturePixelSnapping(highlight)
+    UI.ApplyTexturePixelSnapping(highlight)
     highlight:SetAllPoints()
     highlight:SetColorTexture(1, 1, 1, 0.22)
 
@@ -2510,9 +1904,9 @@ local function CreateCell(parent, x, y, width, height, cellData)
     if cellData.vertical then
         text = CreateVerticalText(cell, 0, 0, width, height, cellData.text or "", cellData.font, cellData.bold)
     else
-        text = CreateText(cell, cellData.text or "", FontWithFallbackSize(cellData.font, 12), "black", "CENTER", "MIDDLE", cellData.bold)
+        text = UI.CreateText(cell, cellData.text or "", UI.FontWithFallbackSize(cellData.font, 12), "black", "CENTER", "MIDDLE", cellData.bold)
         text:SetPoint("CENTER", cell, "CENTER", 0, 0)
-        SetLayoutSize(text, math.max(1, width - 4), math.max(1, height - 4))
+        UI.SetLayoutSize(text, math.max(1, width - 4), math.max(1, height - 4))
     end
     cell.text = text
     ApplyCellResolvedStyle(cell)
@@ -2625,17 +2019,17 @@ end
 
 local function SpanVisualHeight(span, rowLayout)
     if not span then
-        return ROW_HEIGHT
+        return Metrics.rowHeight
     end
 
     local byRow = rowLayout and rowLayout.byRow
     local startRow = byRow and byRow[span.fromRow]
     local endRow = byRow and byRow[span.toRow]
     if not startRow or not endRow then
-        return ROW_HEIGHT
+        return Metrics.rowHeight
     end
 
-    return math.max(1, ((endRow.visualIndex - startRow.visualIndex) + 1) * ROW_HEIGHT)
+    return math.max(1, ((endRow.visualIndex - startRow.visualIndex) + 1) * Metrics.rowHeight)
 end
 
 local function BuildTableSpanMap(tableDefinition, rowLayout)
@@ -2696,7 +2090,7 @@ local function BuildDataTableHeader(parent, tableDefinition, x, y)
             local coord = headerDefinition.coord or ColumnCoord(tableDefinition.columns[fromColumnIndex], fromColumnIndex, 1)
             local fromGridColumn = ColumnIndex(ColumnKey(tableDefinition.columns[fromColumnIndex], fromColumnIndex))
             local toGridColumn = ColumnIndex(ColumnKey(tableDefinition.columns[toColumnIndex], toColumnIndex))
-            CreateHeader(parent, headerX, y, width, HEADER_HEIGHT, headerDefinition.text or "", {
+            CreateHeader(parent, headerX, y, width, Metrics.headerHeight, headerDefinition.text or "", {
                 table = tableKey,
                 coord = coord,
                 gridFromColumn = fromGridColumn,
@@ -2718,7 +2112,7 @@ local function BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y, r
             local data = spanRecord and spanRecord.cellData or GetConfiguredCellData(tableKey, coord) or {}
             local columnTitle = columnDefinition.title or ColumnKey(columnDefinition, columnIndex)
             local width = columnDefinition.width
-            local height = ROW_HEIGHT
+            local height = Metrics.rowHeight
 
             if spanRecord then
                 width = TableColumnWidth(tableDefinition, spanRecord.fromColumnIndex, spanRecord.toColumnIndex)
@@ -2886,7 +2280,7 @@ local function BuildBodyRowLayout(rows)
             if row then
                 layout.byRow[row] = {
                     visualIndex = visualRowIndex,
-                    y = visualRowIndex * ROW_HEIGHT,
+                    y = visualRowIndex * Metrics.rowHeight,
                     definition = rowDefinition,
                 }
             end
@@ -2926,7 +2320,7 @@ function TableLayout.Measure(tableDefinition)
         x = tableDefinition.x or 0,
         y = tableDefinition.y or 0,
         width = TableWidth(tableDefinition),
-        height = HEADER_HEIGHT + (visibleRows * ROW_HEIGHT),
+        height = Metrics.headerHeight + (visibleRows * Metrics.rowHeight),
     }
 end
 
@@ -3015,8 +2409,8 @@ function TableLayout.Build()
 
     if layoutDefinition and type(layoutDefinition.apply) == "function" then
         local appliedLayouts = layoutDefinition.apply(layouts, measure, {
-            headerHeight = HEADER_HEIGHT,
-            rowHeight = ROW_HEIGHT,
+            headerHeight = Metrics.headerHeight,
+            rowHeight = Metrics.rowHeight,
         })
         if type(appliedLayouts) == "table" then
             layouts = appliedLayouts
@@ -3048,20 +2442,20 @@ local function ClampScrollFrame(scroll)
 
     local range = scroll:GetVerticalScrollRange() or 0
     local current = scroll:GetVerticalScroll() or 0
-    scroll:SetVerticalScroll(Clamp(current, 0, range))
+    scroll:SetVerticalScroll(UI.Clamp(current, 0, range))
 end
 
 local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visibleRows, totalRows)
-    local visibleHeight = math.max(1, visibleRows * ROW_HEIGHT)
-    local contentHeight = math.max(visibleHeight, totalRows * ROW_HEIGHT)
+    local visibleHeight = math.max(1, visibleRows * Metrics.rowHeight)
+    local contentHeight = math.max(visibleHeight, totalRows * Metrics.rowHeight)
     local scroll = CreateFrame("ScrollFrame", nil, parent)
     local child = CreateFrame("Frame", nil, scroll)
     local canScroll = totalRows > visibleRows
     scroll.deferScaleLayout = parent.deferScaleLayout
     child.deferScaleLayout = parent.deferScaleLayout
 
-    SetLayoutBounds(scroll, parent, x, y, width, visibleHeight)
-    SetLayoutSize(child, width, contentHeight)
+    UI.SetLayoutBounds(scroll, parent, x, y, width, visibleHeight)
+    UI.SetLayoutSize(child, width, contentHeight)
     child:SetPoint("TOPLEFT", scroll, "TOPLEFT", 0, 0)
     child.cells = parent.cells
     child.bodyScrollFrame = canScroll and scroll or nil
@@ -3090,14 +2484,14 @@ local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visib
                     return
                 end
 
-                offset = Clamp(offset or self:GetVerticalScroll() or 0, 0, self:GetVerticalScrollRange() or 0)
+                offset = UI.Clamp(offset or self:GetVerticalScroll() or 0, 0, self:GetVerticalScrollRange() or 0)
                 NS.tableBodyScrollOffsets = NS.tableBodyScrollOffsets or {}
                 NS.tableBodyScrollOffsets[bodyScrollGroup] = offset
 
                 for _, syncedScroll in ipairs(NS.tableBodyScrollGroups[bodyScrollGroup] or {}) do
                     if syncedScroll ~= self then
                         syncedScroll.syncingBodyScroll = true
-                        syncedScroll:SetVerticalScroll(Clamp(offset, 0, syncedScroll:GetVerticalScrollRange() or 0))
+                        syncedScroll:SetVerticalScroll(UI.Clamp(offset, 0, syncedScroll:GetVerticalScrollRange() or 0))
                         syncedScroll.syncingBodyScroll = nil
                     end
                 end
@@ -3106,7 +2500,7 @@ local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visib
             local savedOffset = NS.tableBodyScrollOffsets and NS.tableBodyScrollOffsets[bodyScrollGroup]
             if savedOffset then
                 scroll.syncingBodyScroll = true
-                scroll:SetVerticalScroll(Clamp(savedOffset, 0, scroll:GetVerticalScrollRange() or 0))
+                scroll:SetVerticalScroll(UI.Clamp(savedOffset, 0, scroll:GetVerticalScrollRange() or 0))
                 scroll.syncingBodyScroll = nil
             end
         end
@@ -3121,7 +2515,7 @@ local function BuildDataTableRows(parent, tableDefinition, rows, x, y, rowLayout
         if rowDefinition.marginRows then
             visualRowIndex = visualRowIndex + (tonumber(rowDefinition.marginRows) or 0)
         else
-            BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + (visualRowIndex * ROW_HEIGHT), rowLayout, spanMap)
+            BuildDataTableRow(parent, tableDefinition, rowDefinition, x, y + (visualRowIndex * Metrics.rowHeight), rowLayout, spanMap)
             visualRowIndex = visualRowIndex + 1
         end
     end
@@ -3147,7 +2541,7 @@ local function BuildDataTable(parent, tableDefinition, layout)
 
     local visibleRows = layout and layout.visibleRows or DisplayedBodyRows(tableDefinition, totalRows)
     local spanMap = BuildTableSpanMap(tableDefinition, rowLayout)
-    local bodyScroll, bodyContent = CreateTableBodyScroll(parent, tableDefinition, x, y + HEADER_HEIGHT, TableWidth(tableDefinition), visibleRows, totalRows)
+    local bodyScroll, bodyContent = CreateTableBodyScroll(parent, tableDefinition, x, y + Metrics.headerHeight, TableWidth(tableDefinition), visibleRows, totalRows)
     bodyScroll.bodyRowLayout = rowLayout
     BuildDataTableRows(bodyContent, tableDefinition, rows, 0, 0, rowLayout, spanMap)
     DrawGridLines(bodyContent)
@@ -3181,7 +2575,7 @@ function NS.UI.ApplyActiveLayerBodyScrollDefaults(force)
 
     local function ResolveScrollOffset(definition, scroll)
         if type(definition) == "number" then
-            return ScalePixel(math.max(0, definition - 2) * ROW_HEIGHT)
+            return UI.ScalePixel(math.max(0, definition - 2) * Metrics.rowHeight)
         end
         if type(definition) ~= "table" then
             return nil
@@ -3189,7 +2583,7 @@ function NS.UI.ApplyActiveLayerBodyScrollDefaults(force)
 
         local offset = tonumber(definition.offset)
         if offset then
-            return ScalePixel(math.max(0, offset))
+            return UI.ScalePixel(math.max(0, offset))
         end
 
         local row = tonumber(definition.row)
@@ -3197,10 +2591,10 @@ function NS.UI.ApplyActiveLayerBodyScrollDefaults(force)
             local rowLayout = scroll and scroll.bodyRowLayout
             local bodyRow = rowLayout and rowLayout.byRow and rowLayout.byRow[row]
             if bodyRow then
-                return ScalePixel(bodyRow.y or 0)
+                return UI.ScalePixel(bodyRow.y or 0)
             end
 
-            return ScalePixel(math.max(0, row - 2) * ROW_HEIGHT)
+            return UI.ScalePixel(math.max(0, row - 2) * Metrics.rowHeight)
         end
 
         return nil
@@ -3212,7 +2606,7 @@ function NS.UI.ApplyActiveLayerBodyScrollDefaults(force)
         end
 
         scroll.syncingBodyScroll = true
-        scroll:SetVerticalScroll(Clamp(offset, 0, scroll:GetVerticalScrollRange() or 0))
+        scroll:SetVerticalScroll(UI.Clamp(offset, 0, scroll:GetVerticalScrollRange() or 0))
         scroll.syncingBodyScroll = nil
     end
 
@@ -3260,13 +2654,13 @@ NS.UI.BuildTablePlaceholders = function(parent, layouts)
             if not placeholder then
                 placeholder = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
                 if placeholder.SetBackdrop then
-                    placeholder:SetBackdrop(FRAME_BACKDROP)
+                    placeholder:SetBackdrop(UI.FrameBackdrop)
                     placeholder:SetBackdropColor(0.18, 0.18, 0.18, 0.34)
                     placeholder:SetBackdropBorderColor(0.42, 0.42, 0.42, 0.85)
                 end
 
                 local header = placeholder:CreateTexture(nil, "ARTWORK")
-                ApplyTexturePixelSnapping(header)
+                UI.ApplyTexturePixelSnapping(header)
                 header:SetColorTexture(0.78, 0.78, 0.78, 0.28)
                 placeholder.header = header
 
@@ -3277,14 +2671,14 @@ NS.UI.BuildTablePlaceholders = function(parent, layouts)
             local x = layout.x or tableDefinition.x or 0
             local y = layout.y or tableDefinition.y or 0
             local width = layout.width or TableWidth(tableDefinition)
-            local height = layout.height or HEADER_HEIGHT
+            local height = layout.height or Metrics.headerHeight
 
-            SetLayoutBounds(placeholder, parent, x, y, width, height)
+            UI.SetLayoutBounds(placeholder, parent, x, y, width, height)
             if not placeholder.headerLayoutRegistered then
-                SetLayoutPoints(placeholder.header, {
+                UI.SetLayoutPoints(placeholder.header, {
                     { point = "TOPLEFT", relativeTo = placeholder, relativePoint = "TOPLEFT", x = 1, y = -1 },
                     { point = "TOPRIGHT", relativeTo = placeholder, relativePoint = "TOPRIGHT", x = -1, y = -1 },
-                }, nil, HEADER_HEIGHT - 2)
+                }, nil, Metrics.headerHeight - 2)
                 placeholder.headerLayoutRegistered = true
             end
             placeholder:Show()
@@ -3396,19 +2790,19 @@ function NS:SetFrameScalePercent(value, silent)
         return
     end
 
-    local percent = NormalizeScalePercent(value)
+    local percent = UI.NormalizeScalePercent(value)
     self.db.scalePercent = percent
 
-    ScaleLayout.BeginPreview()
-    RefreshScaledLayout(false)
-    ScaleLayout.ScheduleDeferredRefresh()
+    UI.ScaleLayout.BeginPreview()
+    UI.RefreshScaledLayout(false)
+    UI.ScaleLayout.ScheduleDeferredRefresh()
 
     if self.scalePopup then
         self.scalePopup:SetValue(percent, true)
     end
 
     if self.frame then
-        SnapFramePosition(self.frame)
+        UI.SnapFramePosition(self.frame)
         if not silent then
             self:SaveFramePosition(self.frame)
         end
