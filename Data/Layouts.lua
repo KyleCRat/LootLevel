@@ -4,7 +4,8 @@ local Data = NS.DataAPI
 local Layout = Data.Layout
 
 local MIDNIGHT_TABLES = {
-    primary = "midnight.primary",
+    activity = "midnight.activity",
+    raid = "midnight.raid",
     dungeon = "midnight.dungeon",
     delve = "midnight.delve",
 }
@@ -14,8 +15,9 @@ Layout({
     name = "Midnight tables",
     tables = MIDNIGHT_TABLES,
     apply = function(layouts, measure, metrics)
+        local activity = measure(MIDNIGHT_TABLES.activity)
+        local raid = measure(MIDNIGHT_TABLES.raid)
         local dungeon = measure(MIDNIGHT_TABLES.dungeon)
-        local primary = measure(MIDNIGHT_TABLES.primary)
         local delve = measure(MIDNIGHT_TABLES.delve)
         local tableGap = metrics.rowHeight
 
@@ -25,12 +27,20 @@ Layout({
             layouts[MIDNIGHT_TABLES.dungeon] = dungeon
         end
 
-        if primary and dungeon then
-            primary.x = dungeon.x + dungeon.width + tableGap
-            primary.y = dungeon.y
-            layouts[MIDNIGHT_TABLES.primary] = primary
-        elseif primary then
-            layouts[MIDNIGHT_TABLES.primary] = primary
+        if raid and dungeon then
+            raid.x = dungeon.x + dungeon.width + tableGap
+            raid.y = dungeon.y
+            layouts[MIDNIGHT_TABLES.raid] = raid
+        elseif raid then
+            layouts[MIDNIGHT_TABLES.raid] = raid
+        end
+
+        if activity and raid then
+            activity.x = raid.x + raid.width + (tableGap / 2)
+            activity.y = raid.y
+            layouts[MIDNIGHT_TABLES.activity] = activity
+        elseif activity then
+            layouts[MIDNIGHT_TABLES.activity] = activity
         end
 
         if delve and dungeon then

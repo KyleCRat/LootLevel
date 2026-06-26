@@ -6,7 +6,7 @@ local RawBlock = Data.Block
 local Cell = Data.Cell
 local MergedCell = Data.MergedCell
 
-local TABLE_PRIMARY = "midnight.primary"
+local TABLE_PRIMARY = "midnight.raid"
 local LAYER = NS.Data.LayerKeys.MIDNIGHT_S1
 
 local function Block(definition)

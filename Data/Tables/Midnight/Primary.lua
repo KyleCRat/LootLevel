@@ -9,7 +9,7 @@ local RawRowBorders = Data.RowBorders
 local RawColumnBorder = Data.ColumnBorder
 local RawTableBorder = Data.TableBorder
 
-local TABLE_KEY = "midnight.primary"
+local TABLE_KEY = "midnight.raid"
 
 local function Block(definition)
     definition.table = definition.table or TABLE_KEY
@@ -49,25 +49,11 @@ Table({
         { col = "g", width = 40, title = "Raid Difficulty / Track" },
         { col = "h", width = 43, title = "Craft" },
         { col = "i", width = 43, title = "Craft" },
-        { col = "j", width = 62, title = "Prey" },
-        { col = "k", width = 62, title = "Delve" },
-        { col = "l", width = 62, title = "Map" },
-        { col = "m", width = 62, title = "Great Vault" },
-        { col = "n", width = 62, title = "Dungeon" },
-        { col = "o", width = 62, title = "Dungeon Great Vault" },
-        { col = "p", width = 46, title = "Item level" },
     },
     headers = {
         { fromCol = "a", toCol = "a", text = "ilvl", coord = "a1" },
         { fromCol = "b", toCol = "g", text = "Raid Difficulty / Track", coord = "b1" },
         { fromCol = "h", toCol = "i", text = "Craft", coord = "h1" },
-        { fromCol = "j", toCol = "j", text = "Prey", coord = "j1" },
-        { fromCol = "k", toCol = "k", text = "Delve", coord = "k1" },
-        { fromCol = "l", toCol = "l", text = "Map", coord = "l1" },
-        { fromCol = "m", toCol = "m", text = "GV", coord = "m1" },
-        { fromCol = "n", toCol = "n", text = "Dung.", coord = "n1" },
-        { fromCol = "o", toCol = "o", text = "GV", coord = "o1" },
-        { fromCol = "p", toCol = "p", text = "ilvl", coord = "p1" },
     },
 })
 
@@ -148,52 +134,5 @@ Block({
         Cell({ col = "a", row = 36, text = "331" }),
         Cell({ col = "a", row = 37, text = "334" }),
         Cell({ col = "a", row = 38, text = "337" }),
-    },
-})
-
-Block({
-    id = "primary.itemLevels.right",
-    bg = "light",
-    border = "solid1",
-    innerBorder = "dashed",
-    bold = true,
-    cells = {
-        Cell({ col = "p", row = 2, text = "220" }),
-        Cell({ col = "p", row = 3, text = "224" }),
-        Cell({ col = "p", row = 4, text = "227" }),
-        Cell({ col = "p", row = 5, text = "230" }),
-        Cell({ col = "p", row = 6, text = "233" }),
-        Cell({ col = "p", row = 7, text = "237" }),
-        Cell({ col = "p", row = 8, text = "240" }),
-        Cell({ col = "p", row = 9, text = "243" }),
-        Cell({ col = "p", row = 10, text = "246" }),
-        Cell({ col = "p", row = 11, text = "250" }),
-        Cell({ col = "p", row = 12, text = "253" }),
-        Cell({ col = "p", row = 13, text = "256" }),
-        Cell({ col = "p", row = 14, text = "259" }),
-        Cell({ col = "p", row = 15, text = "263" }),
-        Cell({ col = "p", row = 16, text = "266" }),
-        Cell({ col = "p", row = 17, text = "269" }),
-        Cell({ col = "p", row = 18, text = "272" }),
-        Cell({ col = "p", row = 19, text = "276" }),
-        Cell({ col = "p", row = 20, text = "279" }),
-        Cell({ col = "p", row = 21, text = "282" }),
-        Cell({ col = "p", row = 22, text = "285" }),
-        Cell({ col = "p", row = 23, text = "289" }),
-        Cell({ col = "p", row = 24, text = "292" }),
-        Cell({ col = "p", row = 25, text = "295" }),
-        Cell({ col = "p", row = 26, text = "298" }),
-        Cell({ col = "p", row = 27, text = "302" }),
-        Cell({ col = "p", row = 28, text = "305" }),
-        Cell({ col = "p", row = 29, text = "308" }),
-        Cell({ col = "p", row = 30, text = "311" }),
-        Cell({ col = "p", row = 31, text = "315" }),
-        Cell({ col = "p", row = 32, text = "318" }),
-        Cell({ col = "p", row = 33, text = "321" }),
-        Cell({ col = "p", row = 34, text = "324" }),
-        Cell({ col = "p", row = 35, text = "328" }),
-        Cell({ col = "p", row = 36, text = "331" }),
-        Cell({ col = "p", row = 37, text = "334" }),
-        Cell({ col = "p", row = 38, text = "337" }),
     },
 })
