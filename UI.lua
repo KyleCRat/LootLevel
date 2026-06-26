@@ -44,6 +44,11 @@ local DEFAULT_INACTIVE_LAYER_ALPHA = 0.3
 local Color
 local TextColorFor
 local layerRenderContext
+local ScaleLayout = {
+    debounceSeconds = 0.12,
+    deferredDepth = 0,
+    serial = 0,
+}
 local RenderCache = {}
 
 local function Pixel(value)
@@ -177,12 +182,25 @@ local function ApplyFontRecord(record)
 end
 
 local function RegisterLayoutRecord(record)
+    if ScaleLayout.deferredDepth > 0
+        or (record.region and record.region.deferScaleLayout)
+        or (record.relativeTo and record.relativeTo.deferScaleLayout)
+    then
+        record.deferScaleLayout = true
+    end
+
     NS.layoutRecords = NS.layoutRecords or {}
     NS.layoutRecords[#NS.layoutRecords + 1] = record
     ApplyLayoutRecord(record)
 end
 
 local function RegisterFontRecord(record)
+    if ScaleLayout.deferredDepth > 0
+        or (record.fontString and record.fontString.deferScaleLayout)
+    then
+        record.deferScaleLayout = true
+    end
+
     NS.layoutFonts = NS.layoutFonts or {}
     NS.layoutFonts[#NS.layoutFonts + 1] = record
     ApplyFontRecord(record)
@@ -359,23 +377,88 @@ local function ResolveTextFont(font, fallbackSize, bold)
     }
 end
 
-local function RefreshScaledLayout()
+local function RefreshScaledLayout(includeDeferred)
     for _, record in ipairs(NS.layoutRecords or {}) do
-        ApplyLayoutRecord(record)
+        if includeDeferred or not record.deferScaleLayout then
+            ApplyLayoutRecord(record)
+        end
     end
 
     for _, record in ipairs(NS.layoutFonts or {}) do
-        ApplyFontRecord(record)
+        if includeDeferred or not record.deferScaleLayout then
+            ApplyFontRecord(record)
+        end
     end
 
     if NS.scaleButtonText then
         NS.scaleButtonText:SetText(FormatScalePercent(GetScalePercent()))
     end
 
-    for _, scrollFrame in ipairs(NS.tableBodyScrolls or {}) do
-        local range = scrollFrame:GetVerticalScrollRange() or 0
-        local current = scrollFrame:GetVerticalScroll() or 0
-        scrollFrame:SetVerticalScroll(Clamp(current, 0, range))
+    if includeDeferred then
+        for _, scrollFrame in ipairs(NS.tableBodyScrolls or {}) do
+            local range = scrollFrame:GetVerticalScrollRange() or 0
+            local current = scrollFrame:GetVerticalScroll() or 0
+            scrollFrame:SetVerticalScroll(Clamp(current, 0, range))
+        end
+    end
+end
+
+function ScaleLayout.WithDeferred(callback)
+    if type(callback) ~= "function" then
+        return
+    end
+
+    ScaleLayout.deferredDepth = ScaleLayout.deferredDepth + 1
+    local ok, err = pcall(callback)
+    ScaleLayout.deferredDepth = math.max(0, ScaleLayout.deferredDepth - 1)
+    if not ok then
+        error(err, 0)
+    end
+end
+
+function ScaleLayout.ScheduleDeferredRefresh()
+    ScaleLayout.serial = ScaleLayout.serial + 1
+    local serial = ScaleLayout.serial
+
+    if not C_Timer or not C_Timer.After then
+        RefreshScaledLayout(true)
+        ScaleLayout.EndPreview()
+        return
+    end
+
+    C_Timer.After(ScaleLayout.debounceSeconds, function()
+        if serial == ScaleLayout.serial then
+            RefreshScaledLayout(true)
+            ScaleLayout.EndPreview()
+        end
+    end)
+end
+
+function ScaleLayout.BeginPreview()
+    if not NS.tableLayer or not NS.tablePlaceholderLayer then
+        return
+    end
+
+    if ScaleLayout.previewActive then
+        return
+    end
+
+    ScaleLayout.previewActive = true
+    NS.tableLayer:Hide()
+    NS.tablePlaceholderLayer:Show()
+end
+
+function ScaleLayout.EndPreview()
+    if not ScaleLayout.previewActive then
+        return
+    end
+
+    ScaleLayout.previewActive = false
+    if NS.tablePlaceholderLayer then
+        NS.tablePlaceholderLayer:Hide()
+    end
+    if NS.tableLayer then
+        NS.tableLayer:Show()
     end
 end
 
@@ -1927,6 +2010,7 @@ function RenderCache.RenderLines(parent, lines)
         overlay:EnableMouse(false)
         parent.gridOverlay = overlay
     end
+    overlay.deferScaleLayout = parent.deferScaleLayout
 
     ReleaseGridOverlayLines(overlay)
     overlay:SetAllPoints(parent)
@@ -1989,6 +2073,7 @@ local function DrawTableBodyViewportBorder(scroll, tableDefinition, width, visib
     end
 
     local overlay = CreateFrame("Frame", nil, scroll)
+    overlay.deferScaleLayout = scroll.deferScaleLayout
     overlay:SetAllPoints(scroll)
     overlay:SetFrameLevel(scroll:GetFrameLevel() + 100)
     overlay:EnableMouse(false)
@@ -2132,6 +2217,9 @@ NS.UI.LayerDisplayName = LayerDisplayName
 NS.UI.LayerSetDisplayName = LayerSetDisplayName
 NS.UI.PrewarmLayerRenderCaches = function()
     RenderCache.Prewarm()
+end
+NS.UI.WithDeferredScaleLayout = function(callback)
+    ScaleLayout.WithDeferred(callback)
 end
 
 local function BuildTooltipLines(cellData, fallbackLabel)
@@ -2744,6 +2832,8 @@ local function CreateTableBodyScroll(parent, x, y, width, visibleRows, totalRows
     local scroll = CreateFrame("ScrollFrame", nil, parent)
     local child = CreateFrame("Frame", nil, scroll)
     local canScroll = totalRows > visibleRows
+    scroll.deferScaleLayout = parent.deferScaleLayout
+    child.deferScaleLayout = parent.deferScaleLayout
 
     SetLayoutBounds(scroll, parent, x, y, width, visibleHeight)
     SetLayoutSize(child, width, contentHeight)
@@ -2811,6 +2901,59 @@ end
 
 NS.UI.BuildRegisteredTables = BuildRegisteredTables
 NS.UI.DrawGridLines = DrawGridLines
+NS.UI.BuildTablePlaceholders = function(parent)
+    if not parent then
+        return
+    end
+
+    parent.placeholders = parent.placeholders or {}
+    for _, placeholder in ipairs(parent.placeholders) do
+        placeholder:Hide()
+    end
+
+    local index = 0
+    for _, tableDefinition in ipairs(NS.Data.tableOrder or {}) do
+        if tableDefinition and tableDefinition.key then
+            index = index + 1
+
+            local placeholder = parent.placeholders[index]
+            if not placeholder then
+                placeholder = CreateFrame("Frame", nil, parent, BackdropTemplateMixin and "BackdropTemplate")
+                if placeholder.SetBackdrop then
+                    placeholder:SetBackdrop(FRAME_BACKDROP)
+                    placeholder:SetBackdropColor(0.18, 0.18, 0.18, 0.34)
+                    placeholder:SetBackdropBorderColor(0.42, 0.42, 0.42, 0.85)
+                end
+
+                local header = placeholder:CreateTexture(nil, "ARTWORK")
+                ApplyTexturePixelSnapping(header)
+                header:SetColorTexture(0.78, 0.78, 0.78, 0.28)
+                placeholder.header = header
+
+                parent.placeholders[index] = placeholder
+            end
+
+            local rows = CollectTableBodyRows(tableDefinition)
+            local rowLayout = BuildBodyRowLayout(rows)
+            local totalRows = rowLayout.totalRows or CountVisualRows(rows)
+            local visibleRows = totalRows > 0 and DisplayedBodyRows(tableDefinition, totalRows) or 0
+            local x = tableDefinition.x or 0
+            local y = tableDefinition.y or 0
+            local width = TableWidth(tableDefinition)
+            local height = HEADER_HEIGHT + (visibleRows * ROW_HEIGHT)
+
+            SetLayoutBounds(placeholder, parent, x, y, width, height)
+            if not placeholder.headerLayoutRegistered then
+                SetLayoutPoints(placeholder.header, {
+                    { point = "TOPLEFT", relativeTo = placeholder, relativePoint = "TOPLEFT", x = 1, y = -1 },
+                    { point = "TOPRIGHT", relativeTo = placeholder, relativePoint = "TOPRIGHT", x = -1, y = -1 },
+                }, nil, HEADER_HEIGHT - 2)
+                placeholder.headerLayoutRegistered = true
+            end
+            placeholder:Show()
+        end
+    end
+end
 
 function NS:HandleCellClick(cellData, button)
     local label = TooltipTitle(cellData) or cellData.colTitle or "cell"
@@ -2905,7 +3048,9 @@ function NS:SetFrameScalePercent(value, silent)
     local percent = NormalizeScalePercent(value)
     self.db.scalePercent = percent
 
-    RefreshScaledLayout()
+    ScaleLayout.BeginPreview()
+    RefreshScaledLayout(false)
+    ScaleLayout.ScheduleDeferredRefresh()
 
     if self.scalePopup then
         self.scalePopup:SetValue(percent, true)

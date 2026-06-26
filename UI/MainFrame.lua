@@ -74,11 +74,24 @@ function NS:CreateMainFrame()
 
     local content = CreateFrame("Frame", nil, frame)
     UI.SetLayoutBox(content, "TOPLEFT", frame, "TOPLEFT", Metrics.padding, -(Metrics.titleHeight + 8), Metrics.frameWidth - (Metrics.padding * 2), Metrics.frameHeight - Metrics.titleHeight - 42)
-    content.cells = frame.cells
+    UI.WithDeferredScaleLayout(function()
+        local tableLayer = CreateFrame("Frame", nil, content)
+        tableLayer.deferScaleLayout = true
+        tableLayer:SetAllPoints(content)
+        tableLayer.cells = frame.cells
+        NS.tableLayer = tableLayer
 
-    UI.BuildRegisteredTables(content)
-    UI.DrawGridLines(content)
-    UI.PrewarmLayerRenderCaches()
+        UI.BuildRegisteredTables(tableLayer)
+        UI.DrawGridLines(tableLayer)
+        UI.PrewarmLayerRenderCaches()
+    end)
+
+    local placeholderLayer = CreateFrame("Frame", nil, content)
+    placeholderLayer:SetAllPoints(content)
+    placeholderLayer:Hide()
+    NS.tablePlaceholderLayer = placeholderLayer
+    UI.BuildTablePlaceholders(placeholderLayer)
+
     UI.BuildFooter(frame)
 
     self.frame = frame
