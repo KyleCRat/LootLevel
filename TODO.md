@@ -6,3 +6,6 @@ Atlas textures in cells
 - Professions-Icon-Quality-Tier5
 - Professions-ChatIcon-Quality-12-Tier1
 - Professions-ChatIcon-Quality-12-Tier2
+
+- Make Raid and Activity tables scroll in sync
+- Let layer define where the table should be scrolled to on activation / first open

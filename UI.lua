@@ -2330,8 +2330,27 @@ local function TooltipTitle(cellData)
 end
 
 local function GetConfiguredCellData(tableKey, coord)
+    local tableCellRecords = NS.Data.cellRecords and NS.Data.cellRecords[tableKey or "main"]
+    local records = tableCellRecords and tableCellRecords[coord]
+    if records then
+        local selected
+        for _, record in ipairs(records) do
+            if IsLayerVisible(record.layer) and BlockWinsOver(selected, record) then
+                selected = record
+            end
+        end
+        if selected then
+            return selected
+        end
+    end
+
     local tableCells = NS.Data.cells and NS.Data.cells[tableKey or "main"]
-    return tableCells and tableCells[coord] or nil
+    local cellData = tableCells and tableCells[coord] or nil
+    if cellData and IsLayerVisible(cellData.layer) then
+        return cellData
+    end
+
+    return nil
 end
 
 local function ShowCellTooltip(cell)
@@ -2584,7 +2603,7 @@ local function BuildTableSpanMap(tableDefinition, rowLayout)
     local spanMap = {}
 
     for _, mergedCell in ipairs(NS.Data.mergedCells or {}) do
-        if mergedCell.table == tableKey then
+        if mergedCell.table == tableKey and IsLayerVisible(mergedCell.layer) then
             local span = NormalizeCellSpan(nil, nil, mergedCell.span)
             local anchorCoord = span and CoordFromIndex(span.fromColumn, span.fromRow)
             local fromColumnIndex, toColumnIndex = SpanTableColumnRange(tableDefinition, span)
@@ -2598,7 +2617,10 @@ local function BuildTableSpanMap(tableDefinition, rowLayout)
                     height = SpanVisualHeight(span, rowLayout),
                 }
                 ForEachCellSpanCoord(span, function(_, _, coord)
-                    spanMap[coord] = record
+                    local existing = spanMap[coord] and spanMap[coord].cellData
+                    if BlockWinsOver(existing, mergedCell) then
+                        spanMap[coord] = record
+                    end
                 end)
             end
         end

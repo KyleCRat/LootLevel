@@ -75,6 +75,27 @@ TableBorder({
     style = "solid1",
 })
 
+ColumnBorder({
+    afterCol = "b",
+    fromRow = 1,
+    style = "solid1",
+    priority = 70,
+})
+
+ColumnBorder({
+    afterCol = "c",
+    fromRow = 1,
+    style = "solid1",
+    priority = 70,
+})
+
+ColumnBorder({
+    afterCol = "f",
+    fromRow = 1,
+    style = "solid1",
+    priority = 70,
+})
+
 local function PrimarySectionBorder(afterCol)
     ColumnBorder({
         afterCol = afterCol,

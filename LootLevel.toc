@@ -19,7 +19,7 @@ Data\Layers\LastTitan\LayerSet.lua
 Data\Layers\LastTitan\Season1.lua
 Data\Tables\Midnight\Dungeon.lua
 Data\Tables\Midnight\Delve.lua
-Data\Tables\Midnight\Primary.lua
+Data\Tables\Midnight\Raid.lua
 Data\Tables\Midnight\Activity.lua
 UI.lua
 UI\Footer.lua

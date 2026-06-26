@@ -38,7 +38,7 @@ Table({
     key = TABLE_KEY,
     name = "Primary item level table",
     layout = "midnight",
-    displayedRows = 28,
+    displayedRows = 27,
     columns = {
         { col = "a", width = 40, title = "Item level" },
         { col = "b", width = 36, title = "Raid Difficulty / Track" },
@@ -73,6 +73,13 @@ TableBorder({
     style = "solid1",
 })
 
+ColumnBorder({
+    afterCol = "a",
+    fromRow = 1,
+    style = "solid1",
+    priority = 70,
+})
+
 local function PrimarySectionBorder(afterCol)
     ColumnBorder({
         afterCol = afterCol,
@@ -82,8 +89,6 @@ local function PrimarySectionBorder(afterCol)
     })
 end
 
-PrimarySectionBorder("a")
--- PrimarySectionBorder("b")
 PrimarySectionBorder("g")
 PrimarySectionBorder("i")
 PrimarySectionBorder("j")

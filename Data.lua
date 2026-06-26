@@ -30,6 +30,8 @@ local layerOrder = {}
 local layersByKey = {}
 local blocks = {}
 local cellsByTable = {}
+local cellRecordsByTable = {}
+local cellRecordOrder = 0
 local colorBlocks = {}
 local mergedCells = {}
 local borderRules = {}
@@ -350,8 +352,9 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
         return nil
     end
 
+    cellRecordOrder = cellRecordOrder + 1
     cellsByTable[tableKey] = cellsByTable[tableKey] or {}
-    cellsByTable[tableKey][cellCoordinate] = {
+    local cellRecord = {
         text = cellDefinition.text or "",
         bg = cellDefinition.bg,
         layer = cellDefinition.layer or blockDefinition.layer,
@@ -361,7 +364,14 @@ local function RegisterBlockCell(blockDefinition, cellDefinition)
         font = MergeFontStyles(blockDefinition, cellDefinition),
         border = cellDefinition.border,
         onClick = cellDefinition.onClick,
+        order = cellRecordOrder,
     }
+
+    cellsByTable[tableKey][cellCoordinate] = cellRecord
+    cellRecordsByTable[tableKey] = cellRecordsByTable[tableKey] or {}
+    cellRecordsByTable[tableKey][cellCoordinate] = cellRecordsByTable[tableKey][cellCoordinate] or {}
+    local records = cellRecordsByTable[tableKey][cellCoordinate]
+    records[#records + 1] = cellRecord
 
     return cellCoordinate
 end
@@ -393,6 +403,7 @@ local function RegisterMergedCell(blockDefinition, cellDefinition)
         return nil
     end
 
+    cellRecordOrder = cellRecordOrder + 1
     local mergedCell = {
         table = tableKey,
         startCoord = span.fromCoord,
@@ -404,10 +415,11 @@ local function RegisterMergedCell(blockDefinition, cellDefinition)
         tooltip = cellDefinition.tooltip or blockDefinition.tooltip or DefaultTooltip(cellDefinition.text),
         colTitle = cellDefinition.title,
         bold = ValueOrDefault(cellDefinition.bold, blockDefinition.bold),
-        vertical = cellDefinition.vertical ~= false,
+        vertical = cellDefinition.vertical == true,
         font = MergeFontStyles(blockDefinition, cellDefinition),
         border = cellDefinition.border,
         onClick = cellDefinition.onClick,
+        order = cellRecordOrder,
     }
 
     mergedCells[#mergedCells + 1] = mergedCell
@@ -583,6 +595,7 @@ NS.Data = {
     defaultActiveLayers = defaultActiveLayers,
     blocks = blocks,
     cells = cellsByTable,
+    cellRecords = cellRecordsByTable,
     colorBlocks = colorBlocks,
     mergedCells = mergedCells,
     borderRules = borderRules,
