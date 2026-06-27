@@ -177,20 +177,46 @@ local function LayerRenderStateKey(state)
     return ("%s:%s"):format(tostring(state.activeLayerSet or ""), tostring(state.activeLayer or ""))
 end
 
+local function LayerRenderState(layerSetKey, layerKey)
+    local state = {
+        activeLayerSet = layerSetKey,
+        activeLayer = layerKey,
+        activeLayers = {
+            [layerSetKey or ""] = layerKey,
+        },
+    }
+    state.key = LayerRenderStateKey(state)
+    return state
+end
+
 local function CurrentLayerRenderState()
     local activeLayerSet = GetActiveLayerSetKey()
     local activeLayer = GetActiveLayerKey(activeLayerSet)
-    return {
-        key = LayerRenderStateKey({
-            activeLayerSet = activeLayerSet,
-            activeLayer = activeLayer,
-        }),
-        activeLayerSet = activeLayerSet,
-        activeLayer = activeLayer,
-        activeLayers = {
-            [activeLayerSet or ""] = activeLayer,
-        },
-    }
+    return LayerRenderState(activeLayerSet, activeLayer)
+end
+
+local function ForEachLayerSetRenderState(layerSetKey, callback)
+    if type(callback) ~= "function" then
+        return
+    end
+
+    layerSetKey = NormalizeLayerSetKey(layerSetKey) or layerSetKey or GetActiveLayerSetKey()
+    local layerSet = LayerSetData(layerSetKey)
+    local seen = {}
+
+    for _, layer in ipairs((layerSet and layerSet.layerOrder) or {}) do
+        local layerKey = layer.key or layer.id
+        local state = LayerRenderState(layerSetKey, layerKey)
+        if state.key and not seen[state.key] then
+            seen[state.key] = true
+            callback(state)
+        end
+    end
+
+    local currentState = CurrentLayerRenderState()
+    if currentState.activeLayerSet == layerSetKey and currentState.key and not seen[currentState.key] then
+        callback(currentState)
+    end
 end
 
 local function ForEachLayerRenderState(callback)
@@ -203,14 +229,7 @@ local function ForEachLayerRenderState(callback)
         local layerSetKey = layerSet.key or layerSet.id
         for _, layer in ipairs(layerSet.layerOrder or {}) do
             local layerKey = layer.key or layer.id
-            local state = {
-                activeLayerSet = layerSetKey,
-                activeLayer = layerKey,
-                activeLayers = {
-                    [layerSetKey or ""] = layerKey,
-                },
-            }
-            state.key = LayerRenderStateKey(state)
+            local state = LayerRenderState(layerSetKey, layerKey)
             if not seen[state.key] then
                 seen[state.key] = true
                 callback(state)
@@ -279,6 +298,22 @@ local function SetRenderContext(state)
     return previous
 end
 
+local function ShouldRefreshRenderParent(parent)
+    if not parent then
+        return false
+    end
+
+    if parent.IsVisible then
+        return parent:IsVisible()
+    end
+
+    if parent.IsShown then
+        return parent:IsShown()
+    end
+
+    return true
+end
+
 function NS:GetActiveLayerKey(layerSetKey)
     return GetActiveLayerKey(layerSetKey)
 end
@@ -294,7 +329,9 @@ function NS:RefreshLayerRendering()
 
     if UI.RenderCache and UI.RenderCache.RefreshParent then
         for _, parent in ipairs(self.gridParents or {}) do
-            UI.RenderCache.RefreshParent(parent)
+            if ShouldRefreshRenderParent(parent) then
+                UI.RenderCache.RefreshParent(parent)
+            end
         end
     end
     if UI.RefreshFooterText then
@@ -393,7 +430,9 @@ Layers.LayerSetDisplayName = LayerSetDisplayName
 Layers.LayerSetLayoutKey = LayerSetLayoutKey
 Layers.LayerSetSharesActiveLayout = LayerSetSharesActiveLayout
 Layers.LayerRenderStateKey = LayerRenderStateKey
+Layers.LayerRenderState = LayerRenderState
 Layers.CurrentLayerRenderState = CurrentLayerRenderState
+Layers.ForEachLayerSetRenderState = ForEachLayerSetRenderState
 Layers.ForEachLayerRenderState = ForEachLayerRenderState
 Layers.IsLayerActive = IsLayerActive
 Layers.LayerRenderOrder = LayerRenderOrder

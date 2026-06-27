@@ -58,8 +58,8 @@ local function ApplyShellLayout(frame, shellLayout)
     frame.shellLayout = shellLayout
 end
 
-local function ActiveLayerSetCacheKey()
-    local state = Layers.CurrentLayerRenderState()
+local function TableLayerCacheKey(state)
+    state = state or Layers.CurrentLayerRenderState()
     return state and state.key or Layers.GetActiveLayerSetKey() or "__default"
 end
 
@@ -69,12 +69,12 @@ local function HideTableLayers(frame)
     end
 end
 
-local function EnsureActiveTableLayer(frame, shellLayout)
-    if not frame.tableContent then
+local function BuildTableLayer(frame, shellLayout, state)
+    if not frame or not frame.tableContent then
         return nil
     end
 
-    local cacheKey = ActiveLayerSetCacheKey()
+    local cacheKey = TableLayerCacheKey(state)
     frame.tableLayersByKey = frame.tableLayersByKey or {}
 
     local tableLayer = frame.tableLayersByKey[cacheKey]
@@ -82,17 +82,54 @@ local function EnsureActiveTableLayer(frame, shellLayout)
         tableLayer = CreateFrame("Frame", nil, frame.tableContent)
         tableLayer.deferScaleLayout = true
         tableLayer:SetAllPoints(frame.tableContent)
+        tableLayer:Hide()
         tableLayer.cells = {}
         frame.tableLayersByKey[cacheKey] = tableLayer
 
-        UI.WithDeferredScaleLayout(function()
-            UI.BuildRegisteredTables(tableLayer, shellLayout.tableLayout)
-            UI.DrawGridLines(tableLayer)
-            UI.PrewarmLayerRenderCaches()
+        local previousContext = Layers.SetRenderContext(state)
+        local ok, err = pcall(function()
+            UI.WithDeferredScaleLayout(function()
+                UI.BuildRegisteredTables(tableLayer, shellLayout.tableLayout)
+                UI.DrawGridLines(tableLayer)
+            end)
         end)
-        if UI.ApplyActiveLayerBodyScrollDefaults then
-            UI.ApplyActiveLayerBodyScrollDefaults(false)
+        Layers.SetRenderContext(previousContext)
+        if not ok then
+            error(err, 0)
         end
+    end
+
+    return tableLayer
+end
+
+local function BuildActiveLayerSetTableLayers(frame, shellLayout)
+    local activeLayerSet = Layers.GetActiveLayerSetKey()
+    local activeKey = TableLayerCacheKey()
+    local activeTableLayer
+
+    if Layers.ForEachLayerSetRenderState then
+        Layers.ForEachLayerSetRenderState(activeLayerSet, function(state)
+            local tableLayer = BuildTableLayer(frame, shellLayout, state)
+            if state and state.key == activeKey then
+                activeTableLayer = tableLayer
+            end
+        end)
+    end
+
+    return activeTableLayer or BuildTableLayer(frame, shellLayout, Layers.CurrentLayerRenderState())
+end
+
+local function EnsureActiveTableLayer(frame, shellLayout)
+    if not frame.tableContent then
+        return nil
+    end
+
+    local tableLayer = BuildActiveLayerSetTableLayers(frame, shellLayout)
+    if UI.ApplyActiveLayerBodyScrollDefaults then
+        UI.ApplyActiveLayerBodyScrollDefaults(false)
+    end
+    if not tableLayer then
+        return nil
     end
 
     HideTableLayers(frame)
