@@ -44,6 +44,38 @@ local function ClampScrollFrame(scroll)
     scroll:SetVerticalScroll(UI.Clamp(current, 0, range))
 end
 
+local function ApplyScrollOffset(scroll, offset)
+    if not scroll or offset == nil then
+        return
+    end
+
+    scroll.syncingBodyScroll = true
+    scroll:SetVerticalScroll(UI.Clamp(offset, 0, scroll:GetVerticalScrollRange() or 0))
+    scroll.syncingBodyScroll = nil
+end
+
+local function ApplySavedScrollOffset(scroll)
+    local bodyScrollGroup = scroll and scroll.bodyScrollGroup
+    if not bodyScrollGroup then
+        return
+    end
+
+    local savedOffset = NS.tableBodyScrollOffsets and NS.tableBodyScrollOffsets[bodyScrollGroup]
+    ApplyScrollOffset(scroll, savedOffset)
+end
+
+local function ApplySavedScrollOffsetWhenShown(scroll)
+    ApplySavedScrollOffset(scroll)
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if scroll and scroll:IsShown() then
+                ApplySavedScrollOffset(scroll)
+            end
+        end)
+    end
+end
+
 local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visibleRows, totalRows)
     local visibleHeight = math.max(1, visibleRows * Metrics.rowHeight)
     local contentHeight = math.max(visibleHeight, totalRows * Metrics.rowHeight)
@@ -96,13 +128,10 @@ local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visib
                     end
                 end
             end)
+            scroll:SetScript("OnShow", ApplySavedScrollOffsetWhenShown)
 
             local savedOffset = NS.tableBodyScrollOffsets and NS.tableBodyScrollOffsets[bodyScrollGroup]
-            if savedOffset then
-                scroll.syncingBodyScroll = true
-                scroll:SetVerticalScroll(UI.Clamp(savedOffset, 0, scroll:GetVerticalScrollRange() or 0))
-                scroll.syncingBodyScroll = nil
-            end
+            ApplyScrollOffset(scroll, savedOffset)
         end
     end
 
@@ -146,16 +175,6 @@ local function ApplyActiveLayerBodyScrollDefaults(force)
         end
 
         return nil
-    end
-
-    local function ApplyScrollOffset(scroll, offset)
-        if not scroll or not offset then
-            return
-        end
-
-        scroll.syncingBodyScroll = true
-        scroll:SetVerticalScroll(UI.Clamp(offset, 0, scroll:GetVerticalScrollRange() or 0))
-        scroll.syncingBodyScroll = nil
     end
 
     for bodyScrollGroup, definition in pairs(scrollDefaults) do
