@@ -15,6 +15,7 @@ Layer({
         ["midnight.raidActivity"] = { row = 2 },
     },
     footer = {
+        left = "The Last Titan - Season 1 - by Yvairel <Party Shark> <Suds with Buds>",
         right = "The Last Titan Season 1 test layer",
     },
 })

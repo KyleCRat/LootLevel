@@ -523,6 +523,6 @@ NS.Data = {
     mergedCells = mergedCells,
     borderRules = borderRules,
     LayerKeys = {},
-    footerLeft = "Midnight - Season 2 (12.1.0) - by Yvairel <Party Shark> <Suds with Buds>",
+    footerLeft = "LootLevel - by Yvairel <Party Shark> <Suds with Buds>",
     footerRight = "1 Once a Week | VF: Venomforged | GV: Great Vault",
 }

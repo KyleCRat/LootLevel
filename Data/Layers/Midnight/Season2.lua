@@ -29,6 +29,7 @@ Layer({
         ["midnight.raidActivity"] = { row = 14 },
     },
     footer = {
+        left = "Midnight - Season 2 (12.1.0) - by Yvairel <Party Shark> <Suds with Buds>",
         right = "1 Once a Week | VF: Venomforged | GV: Great Vault",
     },
 })

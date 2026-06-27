@@ -23,15 +23,26 @@ local function LayerFooterText(layer, side)
     return nil
 end
 
-local function ActiveFooterRightText()
+local function ActiveFooterText(side, fallback)
     local layerSetKey = Layers.GetActiveLayerSetKey()
     local layerSet = Layers.LayerSetData(layerSetKey)
     local activeLayerKey = Layers.GetActiveLayerKey(layerSetKey)
     local activeLayer = Layers.LayerData(activeLayerKey)
-    return LayerFooterText(activeLayer, "right") or LayerFooterText(layerSet, "right") or NS.Data.footerRight or ""
+    return LayerFooterText(activeLayer, side) or LayerFooterText(layerSet, side) or fallback or ""
+end
+
+local function ActiveFooterLeftText()
+    return ActiveFooterText("left", NS.Data.footerLeft)
+end
+
+local function ActiveFooterRightText()
+    return ActiveFooterText("right", NS.Data.footerRight)
 end
 
 function UI.RefreshFooterText()
+    if NS.footerLeftText then
+        NS.footerLeftText:SetText(ActiveFooterLeftText())
+    end
     if NS.footerRightText then
         NS.footerRightText:SetText(ActiveFooterRightText())
     end
@@ -44,7 +55,7 @@ function UI.BuildFooter(parent)
         { point = "BOTTOMRIGHT", relativeTo = parent, relativePoint = "BOTTOMRIGHT", x = -14, y = 8 },
     }, nil, 22)
 
-    local left = UI.CreateText(footer, NS.Data.footerLeft, { size = 12 }, "white", "LEFT", "MIDDLE", false)
+    local left = UI.CreateText(footer, ActiveFooterLeftText(), { size = 12 }, "white", "LEFT", "MIDDLE", false)
     UI.SetLayoutPoints(left, {
         { point = "LEFT", relativeTo = footer, relativePoint = "LEFT", x = 0, y = 0 },
         { point = "RIGHT", relativeTo = footer, relativePoint = "RIGHT", x = -420, y = 0 },
@@ -52,6 +63,7 @@ function UI.BuildFooter(parent)
 
     local right = UI.CreateText(footer, ActiveFooterRightText(), { size = 12 }, "white", "RIGHT", "MIDDLE", false)
     UI.SetLayoutBox(right, "RIGHT", footer, "RIGHT", 0, 0, 410, 20)
+    NS.footerLeftText = left
     NS.footerRightText = right
     NS.footerFrame = footer
     return footer
