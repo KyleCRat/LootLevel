@@ -6,6 +6,86 @@ local Layers = UI.Layers
 local BodyScroll = {}
 UI.BodyScroll = BodyScroll
 
+local SHADOW_BANDS = 4
+local SHADOW_BAND_HEIGHT = 2
+local SHADOW_ALPHA = 0.24
+
+local UpdateScrollShadows
+
+local function SetShown(region, shown)
+    if not region then
+        return
+    end
+
+    if shown then
+        region:Show()
+    else
+        region:Hide()
+    end
+end
+
+local function CreateShadowBand(parent, anchor, index)
+    local texture = parent:CreateTexture(nil, "OVERLAY")
+    UI.ApplyTexturePixelSnapping(texture)
+
+    local alpha = SHADOW_ALPHA * ((SHADOW_BANDS - index) + 1) / SHADOW_BANDS
+    texture:SetColorTexture(0, 0, 0, alpha)
+
+    local offset = (index - 1) * SHADOW_BAND_HEIGHT
+    if anchor == "TOP" then
+        UI.SetLayoutPoints(texture, {
+            { point = "TOPLEFT", relativeTo = parent, relativePoint = "TOPLEFT", x = 0, y = -offset },
+            { point = "TOPRIGHT", relativeTo = parent, relativePoint = "TOPRIGHT", x = 0, y = -offset },
+        }, nil, SHADOW_BAND_HEIGHT)
+    else
+        UI.SetLayoutPoints(texture, {
+            { point = "BOTTOMLEFT", relativeTo = parent, relativePoint = "BOTTOMLEFT", x = 0, y = offset },
+            { point = "BOTTOMRIGHT", relativeTo = parent, relativePoint = "BOTTOMRIGHT", x = 0, y = offset },
+        }, nil, SHADOW_BAND_HEIGHT)
+    end
+
+    texture:Hide()
+    return texture
+end
+
+local function EnsureScrollShadows(scroll)
+    if not scroll or scroll.scrollShadowOverlay then
+        return
+    end
+
+    local overlay = CreateFrame("Frame", nil, scroll)
+    overlay.deferScaleLayout = scroll.deferScaleLayout
+    overlay:SetAllPoints(scroll)
+    overlay:SetFrameLevel(scroll:GetFrameLevel() + 25)
+    overlay:EnableMouse(false)
+
+    overlay.top = {}
+    overlay.bottom = {}
+    for index = 1, SHADOW_BANDS do
+        overlay.top[index] = CreateShadowBand(overlay, "TOP", index)
+        overlay.bottom[index] = CreateShadowBand(overlay, "BOTTOM", index)
+    end
+
+    scroll.scrollShadowOverlay = overlay
+end
+
+UpdateScrollShadows = function(scroll)
+    local overlay = scroll and scroll.scrollShadowOverlay
+    if not overlay then
+        return
+    end
+
+    local range = scroll:GetVerticalScrollRange() or 0
+    local offset = UI.Clamp(scroll:GetVerticalScroll() or 0, 0, range)
+    local canScrollUp = range > 0 and offset > 0
+    local canScrollDown = range > 0 and offset < range
+
+    for index = 1, SHADOW_BANDS do
+        SetShown(overlay.top[index], canScrollUp)
+        SetShown(overlay.bottom[index], canScrollDown)
+    end
+end
+
 local function ScrollTableBodyByWheel(scroll, delta)
     if not scroll then
         return
@@ -14,6 +94,7 @@ local function ScrollTableBodyByWheel(scroll, delta)
     local amount = UI.ScalePixel(Metrics.rowHeight * 3)
     local nextOffset = (scroll:GetVerticalScroll() or 0) - ((delta or 0) * amount)
     scroll:SetVerticalScroll(UI.Clamp(nextOffset, 0, scroll:GetVerticalScrollRange() or 0))
+    UpdateScrollShadows(scroll)
     if scroll.bodyScrollGroup and not scroll.syncingBodyScroll then
         local onVerticalScroll = scroll:GetScript("OnVerticalScroll")
         if onVerticalScroll then
@@ -42,6 +123,7 @@ local function ClampScrollFrame(scroll)
     local range = scroll:GetVerticalScrollRange() or 0
     local current = scroll:GetVerticalScroll() or 0
     scroll:SetVerticalScroll(UI.Clamp(current, 0, range))
+    UpdateScrollShadows(scroll)
 end
 
 local function ApplyScrollOffset(scroll, offset)
@@ -52,6 +134,7 @@ local function ApplyScrollOffset(scroll, offset)
     scroll.syncingBodyScroll = true
     scroll:SetVerticalScroll(UI.Clamp(offset, 0, scroll:GetVerticalScrollRange() or 0))
     scroll.syncingBodyScroll = nil
+    UpdateScrollShadows(scroll)
 end
 
 local function ApplySavedScrollOffset(scroll)
@@ -66,11 +149,13 @@ end
 
 local function ApplySavedScrollOffsetWhenShown(scroll)
     ApplySavedScrollOffset(scroll)
+    UpdateScrollShadows(scroll)
 
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             if scroll and scroll:IsShown() then
                 ApplySavedScrollOffset(scroll)
+                UpdateScrollShadows(scroll)
             end
         end)
     end
@@ -96,8 +181,10 @@ local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visib
     scroll:EnableMouse(canScroll)
     scroll:EnableMouseWheel(canScroll)
     if canScroll then
+        EnsureScrollShadows(scroll)
         AttachTableBodyWheel(scroll, scroll)
         AttachTableBodyWheel(child, scroll)
+        scroll:SetScript("OnShow", ApplySavedScrollOffsetWhenShown)
     end
 
     NS.tableBodyScrolls = NS.tableBodyScrolls or {}
@@ -125,16 +212,18 @@ local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visib
                         syncedScroll.syncingBodyScroll = true
                         syncedScroll:SetVerticalScroll(UI.Clamp(offset, 0, syncedScroll:GetVerticalScrollRange() or 0))
                         syncedScroll.syncingBodyScroll = nil
+                        UpdateScrollShadows(syncedScroll)
                     end
                 end
+                UpdateScrollShadows(self)
             end)
-            scroll:SetScript("OnShow", ApplySavedScrollOffsetWhenShown)
 
             local savedOffset = NS.tableBodyScrollOffsets and NS.tableBodyScrollOffsets[bodyScrollGroup]
             ApplyScrollOffset(scroll, savedOffset)
         end
     end
 
+    UpdateScrollShadows(scroll)
     return scroll, child
 end
 
