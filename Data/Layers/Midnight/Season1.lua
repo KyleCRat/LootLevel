@@ -321,8 +321,8 @@ Block({
     innerColBorder = "solid1",
     innerRowBorder = "dashed",
     cells = {
-        Cell({ col = "a", row = 14, text = "NM1" }),
-        Cell({ col = "b", row = 14, text = "8+1" }),
+        Cell({ col = "a", row = 14, text = "NM¹" }),
+        Cell({ col = "b", row = 14, text = "8+¹" }),
         Cell({ col = "c", row = 14, text = "8+" }),
         Cell({ col = "d", row = 16, text = "8+" }),
         Cell({ col = "e", row = 14, text = "6-7" }),

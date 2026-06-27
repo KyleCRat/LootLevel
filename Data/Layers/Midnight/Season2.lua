@@ -30,7 +30,7 @@ Layer({
     },
     footer = {
         left = "Midnight - Season 2 (12.1.0) - by Yvairel <Party Shark> <Suds with Buds>",
-        right = "1 Once a Week | VF: Venomforged | GV: Great Vault",
+        right = "¹ Once a Week | VF: Venomforged | GV: Great Vault",
     },
 })
 
@@ -324,8 +324,8 @@ Block({
     innerColBorder = "solid1",
     innerRowBorder = "dashed",
     cells = {
-        Cell({ col = "a", row = 26, text = "NM1" }),
-        Cell({ col = "b", row = 26, text = "8+1" }),
+        Cell({ col = "a", row = 26, text = "NM¹" }),
+        Cell({ col = "b", row = 26, text = "8+¹" }),
         Cell({ col = "c", row = 26, text = "8+" }),
         Cell({ col = "d", row = 28, text = "8+" }),
         Cell({ col = "e", row = 26, text = "6-7" }),
