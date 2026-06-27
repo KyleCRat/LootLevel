@@ -105,7 +105,7 @@ Block({
     cells = {
         MergedCell({ col = "b", row = 15, toRow = 17, text = "Heroic", vertical = true, tooltip = { title = "Heroic Raid Drops from first 6 Bosses" } }),
         Cell({ col = "b", row = 19, text = "Rare", font = { size = 10 }, tooltip = { title = "Very Rare Heroic raid drops" } }),
-        Cell({ col = "b", row = 22, text = "VF", tooltip = { title = "Voidforged Heroic Item" } }),
+        Cell({ col = "b", row = 22, text = "VF", tooltip = { title = "Heroic Voidforged Item" } }),
 
         Cell({ col = "c", row = 14, text = "1/6", tooltip = { title = "Hero Upgrade Track" } }),
         Cell({ col = "c", row = 15, text = "2/6", tooltip = { title = "Hero Upgrade Track" } }),
@@ -128,9 +128,9 @@ Block({
     border = "solid1",
     innerBorder = "dashed",
     cells = {
-        MergedCell({ col = "e", row = 19, toRow = 21, text = "Mythic", vertical = true, tooltip = { title = "Mythic Raid Drops from first 6 Bosses" } }),
-        Cell({ col = "e", row = 26, text = "Rare", font = { size = 10 }, tooltip = { title = "Very Rare Mythic raid drops" } }),
-        Cell({ col = "e", row = 23, text = "SF", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "Mythic Sporefall Item" } }),
+        MergedCell({ col = "e", row = 19, toRow = 21, text = "Mythic", vertical = true, tooltip = { title = "Mythic Raid Drops" } }),
+        Cell({ col = "e", row = 23, text = "Rare", font = { size = 10 }, tooltip = { title = "Very Rare Mythic Raid Drops" } }),
+        Cell({ col = "e", row = 26, text = "SF", tooltip = { title = "Mythic Sporefall Item" } }),
 
         Cell({ col = "f", row = 18, text = "1/6", tooltip = { title = "Myth Upgrade Track" } }),
         Cell({ col = "f", row = 19, text = "2/6", tooltip = { title = "Myth Upgrade Track" } }),
@@ -140,8 +140,9 @@ Block({
         Cell({ col = "f", row = 23, text = "6/6", tooltip = { title = "Myth Upgrade Track" } }),
         Cell({ col = "f", row = 26, text = "9/6", tooltip = { title = "Myth Upgrade Track" } }),
 
-        MergedCell({ col = "g", row = 18, toRow = 23, text = "Myth", vertical = true }),    },
-        Cell({ col = "g", row = 26, text = "VF", tooltip = { title = "Voidforged Mythic reward" } }),
+        MergedCell({ col = "g", row = 18, toRow = 23, text = "Myth", vertical = true }),
+        Cell({ col = "g", row = 26, text = "VF", tooltip = { title = "Mythic Voidforged Item" } }),
+    },
 })
 
 --------------------------------------------------------------------------------
