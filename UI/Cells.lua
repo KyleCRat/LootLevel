@@ -109,6 +109,11 @@ local function CreateAtlasIcon(parent, width, height, atlas)
     return icon
 end
 
+local function IsInactiveLayerCell(cellData)
+    local layerKey = cellData and (cellData.sourceLayer or cellData.layer)
+    return layerKey ~= nil and not Layers.IsLayerActive(layerKey)
+end
+
 local function CreateCell(parent, x, y, width, height, cellData)
     cellData = cellData or {}
     CellStyles.SetCellStyleLayer(cellData, "default", StyleLayer.default, {
@@ -136,6 +141,8 @@ local function CreateCell(parent, x, y, width, height, cellData)
     local text
     if cellData.backgroundOnly then
         -- Background-only cells intentionally carry no visual content.
+    elseif IsInactiveLayerCell(cellData) then
+        -- Inactive layer cells keep their background/borders but do not render foreground content.
     elseif type(cellData.atlas) == "string" and cellData.atlas ~= "" then
         cell.icon = CreateAtlasIcon(cell, width, height, cellData.atlas)
     elseif cellData.vertical then
@@ -194,5 +201,6 @@ Cells.GetConfiguredData = GetConfiguredCellData
 Cells.GetUnscaledFontMeasurement = GetUnscaledFontMeasurement
 Cells.CreateVerticalText = CreateVerticalText
 Cells.CreateAtlasIcon = CreateAtlasIcon
+Cells.IsInactiveLayerCell = IsInactiveLayerCell
 Cells.Create = CreateCell
 Cells.CreateHeader = CreateHeader
