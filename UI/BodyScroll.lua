@@ -9,6 +9,7 @@ UI.BodyScroll = BodyScroll
 local SHADOW_BANDS = 4
 local SHADOW_BAND_HEIGHT = 2
 local SHADOW_ALPHA = 0.24
+local SCROLL_EDGE_EPSILON = 1
 
 local UpdateScrollShadows
 
@@ -77,8 +78,8 @@ UpdateScrollShadows = function(scroll)
 
     local range = scroll:GetVerticalScrollRange() or 0
     local offset = UI.Clamp(scroll:GetVerticalScroll() or 0, 0, range)
-    local canScrollUp = range > 0 and offset > 0
-    local canScrollDown = range > 0 and offset < range
+    local canScrollUp = range > 0 and offset > SCROLL_EDGE_EPSILON
+    local canScrollDown = range > 0 and (range - offset) > SCROLL_EDGE_EPSILON
 
     for index = 1, SHADOW_BANDS do
         SetShown(overlay.top[index], canScrollUp)
