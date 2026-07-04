@@ -7,6 +7,7 @@ local Cell = Data.Cell
 local MergedCell = Data.MergedCell
 local RawColumnBorder = Data.ColumnBorder
 local RawRowBorders = Data.RowBorders
+local RawTableBorder = Data.TableBorder
 
 local TABLE_KEY = "midnight.delve"
 
@@ -25,6 +26,12 @@ local function ColumnBorder(definition)
     definition = definition or {}
     definition.table = definition.table or TABLE_KEY
     return RawColumnBorder(definition)
+end
+
+local function TableBorder(definition)
+    definition = definition or {}
+    definition.table = definition.table or TABLE_KEY
+    return RawTableBorder(definition)
 end
 
 Table({
@@ -59,6 +66,10 @@ RowBorders({
 RowBorders({
     style = "dashed",
     priority = 1,
+})
+
+TableBorder({
+    style = "solid1",
 })
 
 ColumnBorder({
