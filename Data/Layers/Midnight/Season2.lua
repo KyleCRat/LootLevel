@@ -132,7 +132,7 @@ Block({
         MergedCell({ col = "e", row = 31, toRow = 33, text = "Mythic", vertical = true, tooltip = { title = "Mythic Raid Drops from first 6 Bosses" } }),
         Cell({ col = "e", row = 37, text = "VF", tooltip = { title = "Venomforged Mythic reward" } }),
         Cell({ col = "e", row = 38, text = "Rare", font = { size = 10 }, tooltip = { title = "Very Rare Mythic raid drops" } }),
-        Cell({ col = "e", row = 35, text = "GV", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "Mythic Great Vault Reward" } }),
+        Cell({ col = "e", row = 35, text = "GV", tooltip = { title = "Mythic Great Vault Reward" } }),
 
         Cell({ col = "f", row = 30, text = "1/6", tooltip = { title = "Myth Upgrade Track" } }),
         Cell({ col = "f", row = 31, text = "2/6", tooltip = { title = "Myth Upgrade Track" } }),
