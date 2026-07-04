@@ -69,7 +69,7 @@ Block({
 
         MergedCell({ col = "d", row = 6, toRow = 11, text = "Veteran", vertical = true }),
 
-        Cell({ col = "e", row = 10, text = "SF", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "LFR Sporefall Item Drop" } }),
+        Cell({ col = "e", row = 10, text = "SF", border = { right = "dashed", bottom = "dashed", left = "solid1" }, tooltip = { title = "LFR Sporefall Item Drop" } }),
     },
 })
 
@@ -92,7 +92,7 @@ Block({
 
         MergedCell({ col = "g", row = 10, toRow = 15, text = "Champion", vertical = true }),
 
-        Cell({ col = "b", row = 14, text = "SF", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "Normal Sporefall Item Drop" } }),
+        Cell({ col = "b", row = 14, text = "SF", border = { right = "dashed", bottom = "dashed", left = "solid1" }, tooltip = { title = "Normal Sporefall Item Drop" } }),
     },
 })
 
@@ -117,7 +117,7 @@ Block({
 
         MergedCell({ col = "d", row = 14, toRow = 19, text = "Hero", vertical = true }),
 
-        Cell({ col = "e", row = 18, text = "SF", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "Heroic Sporefall Item Drop" } }),
+        Cell({ col = "e", row = 18, text = "SF", border = { right = "dashed", bottom = "dashed", left = "solid1" }, tooltip = { title = "Heroic Sporefall Item Drop" } }),
     },
 })
 

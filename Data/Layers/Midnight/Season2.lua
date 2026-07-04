@@ -70,7 +70,7 @@ Block({
 
         MergedCell({ col = "d", row = 18, toRow = 23, text = "Veteran", vertical = true }),
 
-        Cell({ col = "e", row = 22, text = "GV", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "LFR Great Vault Reward" } }),
+        Cell({ col = "e", row = 22, text = "GV", border = { right = "dashed", bottom = "dashed", left = "solid1" }, tooltip = { title = "LFR Great Vault Reward" } }),
     },
 })
 
@@ -93,7 +93,7 @@ Block({
 
         MergedCell({ col = "g", row = 22, toRow = 27, text = "Champion", vertical = true }),
 
-        Cell({ col = "b", row = 26, text = "GV", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "Normal Great Vault Reward" } }),
+        Cell({ col = "b", row = 26, text = "GV", border = { right = "dashed", bottom = "dashed", left = "solid1" }, tooltip = { title = "Normal Great Vault Reward" } }),
     },
 })
 
@@ -118,7 +118,7 @@ Block({
 
         MergedCell({ col = "d", row = 26, toRow = 31, text = "Hero", vertical = true }),
 
-        Cell({ col = "e", row = 30, text = "GV", border = { right = "dashed", bottom = "dashed" }, tooltip = { title = "Heroic Great Vault Reward" } }),
+        Cell({ col = "e", row = 30, text = "GV", border = { right = "dashed", bottom = "dashed", left = "solid1" }, tooltip = { title = "Heroic Great Vault Reward" } }),
     },
 })
 

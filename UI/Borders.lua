@@ -14,6 +14,7 @@ local Borders = {}
 UI.Borders = Borders
 
 local ColumnIndex = Coordinates.ColumnIndex
+local CoordFromIndex = Coordinates.CoordFromIndex
 local CoordKey = Coordinates.CoordKey
 local NormalizeCoord = Coordinates.NormalizeCoord
 local ParseCoord = Coordinates.ParseCoord
@@ -215,14 +216,37 @@ local function RegisterCellCoordinate(parent, cell, cellData, x, y, width, heigh
         height = UI.Pixel(height),
     }
 
+    parent.gridCoordBounds = parent.gridCoordBounds or {}
+    local columnCount = math.max(1, span.toColumn - span.fromColumn + 1)
+    local rowCount = math.max(1, span.toRow - span.fromRow + 1)
     for spanRow = span.fromRow, span.toRow do
         grid.rows[spanRow] = grid.rows[spanRow] or {}
         for spanColumn = span.fromColumn, span.toColumn do
             grid.rows[spanRow][spanColumn] = cell
             grid.columns[spanColumn] = grid.columns[spanColumn] or {}
             grid.columns[spanColumn][spanRow] = cell
+
+            local left = UI.Pixel(cell.gridBounds.x + ((spanColumn - span.fromColumn) * cell.gridBounds.width / columnCount))
+            local right = UI.Pixel(cell.gridBounds.x + ((spanColumn - span.fromColumn + 1) * cell.gridBounds.width / columnCount))
+            local top = UI.Pixel(cell.gridBounds.y + ((spanRow - span.fromRow) * cell.gridBounds.height / rowCount))
+            local bottom = UI.Pixel(cell.gridBounds.y + ((spanRow - span.fromRow + 1) * cell.gridBounds.height / rowCount))
+            local coveredCoord = CoordFromIndex(spanColumn, spanRow)
+            local coveredCoordKey = CoordKey(tableKey, coveredCoord)
+            if coveredCoordKey then
+                parent.gridCoordBounds[coveredCoordKey] = {
+                    x = left,
+                    y = top,
+                    width = math.max(1, right - left),
+                    height = math.max(1, bottom - top),
+                }
+            end
         end
     end
+end
+
+local function SplitCoordKey(coordKey)
+    local tableKey, coord = tostring(coordKey or ""):match("^(.-):(.+)$")
+    return tableKey, coord
 end
 
 local function BorderLineKey(line)
@@ -280,8 +304,7 @@ local function StoreGridLine(parent, line, borderStyle)
     end
 end
 
-local function GetCellEdgeLine(cell, edge)
-    local bounds = cell and cell.gridBounds
+local function GetBoundsEdgeLine(bounds, edge)
     if not bounds then
         return nil
     end
@@ -317,6 +340,44 @@ local function GetCellEdgeLine(cell, edge)
     end
 
     return nil
+end
+
+local function GetCellEdgeLine(cell, edge)
+    return GetBoundsEdgeLine(cell and cell.gridBounds, edge)
+end
+
+local function GetCoordEdgeLine(parent, coordKey, cell, edge)
+    local bounds = parent and parent.gridCoordBounds and parent.gridCoordBounds[coordKey]
+    return GetBoundsEdgeLine(bounds, edge) or GetCellEdgeLine(cell, edge)
+end
+
+local function GetNeighborBlockByCoord(parent, tableKey, column, row, edge)
+    if not parent or not tableKey or not column or not row then
+        return nil
+    end
+
+    local neighborColumn = column
+    local neighborRow = row
+    if edge == "left" then
+        neighborColumn = column - 1
+    elseif edge == "right" then
+        neighborColumn = column + 1
+    elseif edge == "top" then
+        neighborRow = row - 1
+    elseif edge == "bottom" then
+        neighborRow = row + 1
+    else
+        return nil
+    end
+
+    local grid = parent.gridTables and parent.gridTables[tableKey]
+    if not grid or not grid.rows[neighborRow] or not grid.rows[neighborRow][neighborColumn] then
+        return nil
+    end
+
+    local neighborCoord = CoordFromIndex(neighborColumn, neighborRow)
+    local neighborCoordKey = neighborCoord and CoordKey(tableKey, neighborCoord)
+    return neighborCoordKey and parent.blockByCoord and parent.blockByCoord[neighborCoordKey] or nil
 end
 
 local function GetNeighborCell(parent, cell, edge)
@@ -465,8 +526,9 @@ local function GetCellByCoord(parent, tableKey, coord)
     return key and parent.cellsByCoord and parent.cellsByCoord[key] or nil
 end
 
-local function AssignCellToBlock(parent, cell, block)
-    if not cell or not block or not cell.coordKey then
+local function AssignCellToBlock(parent, cell, block, coordKey)
+    coordKey = coordKey or (cell and cell.coordKey)
+    if not cell or not block or not coordKey then
         return
     end
 
@@ -476,12 +538,12 @@ local function AssignCellToBlock(parent, cell, block)
 
     parent.blockByCoord = parent.blockByCoord or {}
 
-    local existing = parent.blockByCoord[cell.coordKey]
+    local existing = parent.blockByCoord[coordKey]
     if existing and not BlockWinsOver(existing, block) then
         return
     end
 
-    parent.blockByCoord[cell.coordKey] = block
+    parent.blockByCoord[coordKey] = block
     cell.cellData.block = block.id
     cell.cellData.layer = block.layer
     cell.cellData.layerName = Layers.LayerDisplayName(block.layer)
@@ -521,7 +583,7 @@ local function ApplyColorBlocks(parent)
         if block and type(blockData.cells) == "table" then
             local tableKey = blockData.table or "main"
             for _, coord in ipairs(blockData.cells) do
-                AssignCellToBlock(parent, GetCellByCoord(parent, tableKey, coord), block)
+                AssignCellToBlock(parent, GetCellByCoord(parent, tableKey, coord), block, CoordKey(tableKey, coord))
             end
         end
     end
@@ -561,18 +623,26 @@ local function DrawColorBlockBorders(parent)
     for coordKey, block in pairs(parent.blockByCoord or {}) do
         local cell = parent.cellsByCoord and parent.cellsByCoord[coordKey]
         if cell and block.borderStyle then
+            local tableKey, coord = SplitCoordKey(coordKey)
+            local column, row = ParseCoord(coord)
+            local hasCoord = tableKey and column and row
             local edges = { "left", "right", "top", "bottom" }
             for _, edge in ipairs(edges) do
-                local neighbor = GetNeighborCell(parent, cell, edge)
-                local neighborBlock = neighbor and neighbor.coordKey and parent.blockByCoord[neighbor.coordKey]
+                local neighborBlock
+                if hasCoord then
+                    neighborBlock = GetNeighborBlockByCoord(parent, tableKey, column, row, edge)
+                else
+                    local neighbor = GetNeighborCell(parent, cell, edge)
+                    neighborBlock = neighbor and neighbor.coordKey and parent.blockByCoord[neighbor.coordKey]
+                end
                 local innerBorderStyle, isRelatedBlock = GetRelatedBlockInnerBorderStyle(block, neighborBlock, edge)
                 if isRelatedBlock then
                     if innerBorderStyle then
-                        StoreGridLine(parent, GetCellEdgeLine(cell, edge), RelatedBlockBorderStyle(block, neighborBlock, innerBorderStyle))
+                        StoreGridLine(parent, GetCoordEdgeLine(parent, coordKey, cell, edge), RelatedBlockBorderStyle(block, neighborBlock, innerBorderStyle))
                     else
                         StoreGridLine(
                             parent,
-                            GetCellEdgeLine(cell, edge),
+                            GetCoordEdgeLine(parent, coordKey, cell, edge),
                             CopyBorderStyle(
                                 { style = "none" },
                                 BorderPriority.block + MaxBlockPriority(block, neighborBlock),
@@ -582,7 +652,7 @@ local function DrawColorBlockBorders(parent)
                         )
                     end
                 else
-                    StoreGridLine(parent, GetCellEdgeLine(cell, edge), BlockBorderStyle(block, block.borderStyle))
+                    StoreGridLine(parent, GetCoordEdgeLine(parent, coordKey, cell, edge), BlockBorderStyle(block, block.borderStyle))
                 end
             end
         end
