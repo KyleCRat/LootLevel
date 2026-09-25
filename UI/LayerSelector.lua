@@ -129,9 +129,10 @@ function LayerSelector.CreateButtons(parent)
     local y = LayerSelector.topOffset
     for _, layerSet in ipairs((NS.Data and NS.Data.layerSetOrder) or {}) do
         local layerSetKey = layerSet.key or layerSet.id
-        local setButton = LayerSelector.CreateButton(parent, LayerSelector.LayerSetButtonText(layerSet), LayerSelector.width, LayerSelector.height)
+        local setWidth = layerSet.buttonWidth or LayerSelector.width
+        local setButton = LayerSelector.CreateButton(parent, LayerSelector.LayerSetButtonText(layerSet), setWidth, LayerSelector.height)
         local buttonLayerSetKey = layerSetKey
-        UI.SetLayoutBox(setButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.x, y, LayerSelector.width, LayerSelector.height)
+        UI.SetLayoutBox(setButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.x, y, setWidth, LayerSelector.height)
         setButton:SetScript("OnClick", function()
             NS:SetActiveLayerSet(buttonLayerSetKey, true)
         end)
@@ -150,10 +151,11 @@ function LayerSelector.CreateButtons(parent)
         y = y - LayerSelector.height - LayerSelector.gap
         for _, layer in ipairs(layerSet.layerOrder or {}) do
             local layerKey = layer.key or layer.id
-            local layerButton = LayerSelector.CreateButton(parent, LayerSelector.LayerButtonText(layer), LayerSelector.subWidth, LayerSelector.subHeight)
+            local layerWidth = layer.buttonWidth or LayerSelector.subWidth
+            local layerButton = LayerSelector.CreateButton(parent, LayerSelector.LayerButtonText(layer), layerWidth, LayerSelector.subHeight)
             local buttonLayerKey = layerKey
             local buttonLayerSetKey = layerSetKey
-            UI.SetLayoutBox(layerButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.subX, y, LayerSelector.subWidth, LayerSelector.subHeight)
+            UI.SetLayoutBox(layerButton, "TOPLEFT", parent, "TOPRIGHT", LayerSelector.subX, y, layerWidth, LayerSelector.subHeight)
             layerButton:SetScript("OnClick", function()
                 NS:SetActiveLayer(buttonLayerKey, true)
             end)

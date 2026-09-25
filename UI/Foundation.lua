@@ -209,9 +209,7 @@ local function RefreshScaledLayout(includeDeferred)
 
     if includeDeferred then
         for _, scrollFrame in ipairs(NS.tableBodyScrolls or {}) do
-            local range = scrollFrame:GetVerticalScrollRange() or 0
-            local current = scrollFrame:GetVerticalScroll() or 0
-            scrollFrame:SetVerticalScroll(Clamp(current, 0, range))
+            UI.BodyScroll.Clamp(scrollFrame)
         end
     end
 end

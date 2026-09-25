@@ -3,13 +3,14 @@
 ## Notes: Season item level reference table.
 ## Author: Yvairel
 ## Version: 12.1.0-2
-## SavedVariables: LootLevelDB
+## SavedVariables: LootLevelDB, LootLevelCollectorDB
 
 Libs\LibStub\LibStub.lua
 Libs\LibPopupSlider-1.0\LibPopupSlider-1.0.xml
 
 Core.lua
 Combat.lua
+Collector\BonusScanner.lua
 Shared\Helpers.lua
 Shared\Coordinates.lua
 Data.lua
@@ -24,12 +25,21 @@ Data\Tables\Midnight\Dungeon.lua
 Data\Tables\Midnight\Delve.lua
 Data\Tables\Midnight\Raid.lua
 Data\Tables\Midnight\Activity.lua
+Data\Tables\MidnightDD.lua
+Data\Progression\Model.lua
+Data\Progression\Raid.lua
+Data\Progression\Activities.lua
+Data\Layers\MidnightDD\LayerSet.lua
+Data\Layers\MidnightDD\Season1.lua
+Data\Layers\MidnightDD\Season2.lua
+Data\Layers\MidnightDD\Build.lua
 UI\Foundation.lua
 UI\Colors.lua
 UI\Fonts.lua
 UI\PixelRoot.lua
 UI\GridLines.lua
 UI\LayerState.lua
+UI\CellBackgrounds.lua
 UI\CellStyles.lua
 UI\LayerResolver.lua
 UI\Borders.lua
@@ -46,4 +56,5 @@ UI\Footer.lua
 UI\ScaleButton.lua
 UI\LayerSelector.lua
 UI\MainFrame.lua
+UI\Collector.lua
 Commands.lua

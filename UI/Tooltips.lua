@@ -12,16 +12,9 @@ local function BuildTooltipLines(cellData, fallbackLabel)
     local tooltip = cellData.tooltip
     local lines = {}
 
-    if type(tooltip) == "table" then
-        for _, key in ipairs({ "a", "b", "c", "d", "e" }) do
-            if tooltip[key] then
-                lines[#lines + 1] = tooltip[key]
-            end
-        end
-
-        if #lines > 0 then
-            return lines
-        end
+    if type(tooltip) == "table" and tooltip.description then
+        lines[1] = tooltip.description
+        return lines
     end
 
     if cellData.colTitle then

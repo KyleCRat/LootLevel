@@ -6,6 +6,7 @@ local Metrics = UI.Metrics
 local StyleLayer = UI.StyleLayer
 local MergedVerticalLabel = UI.MergedVerticalLabel
 local CellStyles = UI.CellStyles
+local CellBackgrounds = UI.CellBackgrounds
 local Borders = UI.Borders
 local BodyScroll = UI.BodyScroll
 local Tooltips = UI.Tooltips
@@ -128,10 +129,7 @@ local function CreateCell(parent, x, y, width, height, cellData)
     cell:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     cell.cellData = cellData
 
-    local bg = cell:CreateTexture(nil, "BACKGROUND")
-    UI.ApplyTexturePixelSnapping(bg)
-    bg:SetAllPoints(cell)
-    cell.bg = bg
+    CellBackgrounds.Create(cell)
 
     local highlight = cell:CreateTexture(nil, "HIGHLIGHT")
     UI.ApplyTexturePixelSnapping(highlight)

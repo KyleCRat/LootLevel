@@ -13,6 +13,13 @@ local SCROLL_EDGE_EPSILON = 1
 
 local UpdateScrollShadows
 
+local function GetScrollRange(scroll)
+    local child = scroll:GetScrollChild()
+    -- Native scroll bounds can include oversized masks and text. Only the
+    -- explicitly sized table body should determine how far its rows scroll.
+    return math.max(0, child:GetHeight() - scroll:GetHeight())
+end
+
 local function SetShown(region, shown)
     if not region then
         return
@@ -76,7 +83,7 @@ UpdateScrollShadows = function(scroll)
         return
     end
 
-    local range = scroll:GetVerticalScrollRange() or 0
+    local range = GetScrollRange(scroll)
     local offset = UI.Clamp(scroll:GetVerticalScroll() or 0, 0, range)
     local canScrollUp = range > 0 and offset > SCROLL_EDGE_EPSILON
     local canScrollDown = range > 0 and (range - offset) > SCROLL_EDGE_EPSILON
@@ -94,7 +101,7 @@ local function ScrollTableBodyByWheel(scroll, delta)
 
     local amount = UI.ScalePixel(Metrics.rowHeight * 3)
     local nextOffset = (scroll:GetVerticalScroll() or 0) - ((delta or 0) * amount)
-    scroll:SetVerticalScroll(UI.Clamp(nextOffset, 0, scroll:GetVerticalScrollRange() or 0))
+    scroll:SetVerticalScroll(UI.Clamp(nextOffset, 0, GetScrollRange(scroll)))
     UpdateScrollShadows(scroll)
     if scroll.bodyScrollGroup and not scroll.syncingBodyScroll then
         local onVerticalScroll = scroll:GetScript("OnVerticalScroll")
@@ -121,7 +128,7 @@ local function ClampScrollFrame(scroll)
         return
     end
 
-    local range = scroll:GetVerticalScrollRange() or 0
+    local range = GetScrollRange(scroll)
     local current = scroll:GetVerticalScroll() or 0
     scroll:SetVerticalScroll(UI.Clamp(current, 0, range))
     UpdateScrollShadows(scroll)
@@ -132,9 +139,12 @@ local function ApplyScrollOffset(scroll, offset)
         return
     end
 
-    scroll.syncingBodyScroll = true
-    scroll:SetVerticalScroll(UI.Clamp(offset, 0, scroll:GetVerticalScrollRange() or 0))
-    scroll.syncingBodyScroll = nil
+    offset = UI.Clamp(offset, 0, GetScrollRange(scroll))
+    if scroll:GetVerticalScroll() ~= offset then
+        scroll.syncingBodyScroll = true
+        scroll:SetVerticalScroll(offset)
+        scroll.syncingBodyScroll = nil
+    end
     UpdateScrollShadows(scroll)
 end
 
@@ -204,19 +214,16 @@ local function CreateTableBodyScroll(parent, tableDefinition, x, y, width, visib
                     return
                 end
 
-                offset = UI.Clamp(offset or self:GetVerticalScroll() or 0, 0, self:GetVerticalScrollRange() or 0)
+                offset = UI.Clamp(offset or self:GetVerticalScroll() or 0, 0, GetScrollRange(self))
+                ApplyScrollOffset(self, offset)
                 NS.tableBodyScrollOffsets = NS.tableBodyScrollOffsets or {}
                 NS.tableBodyScrollOffsets[bodyScrollGroup] = offset
 
                 for _, syncedScroll in ipairs(NS.tableBodyScrollGroups[bodyScrollGroup] or {}) do
                     if syncedScroll ~= self then
-                        syncedScroll.syncingBodyScroll = true
-                        syncedScroll:SetVerticalScroll(UI.Clamp(offset, 0, syncedScroll:GetVerticalScrollRange() or 0))
-                        syncedScroll.syncingBodyScroll = nil
-                        UpdateScrollShadows(syncedScroll)
+                        ApplyScrollOffset(syncedScroll, offset)
                     end
                 end
-                UpdateScrollShadows(self)
             end)
 
             local savedOffset = NS.tableBodyScrollOffsets and NS.tableBodyScrollOffsets[bodyScrollGroup]

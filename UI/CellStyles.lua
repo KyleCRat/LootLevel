@@ -2,6 +2,7 @@ local ADDON_NAME, NS = ...
 
 local UI = NS.UI
 local Helpers = NS.Helpers
+local CellBackgrounds = UI.CellBackgrounds
 local CellStyles = {}
 UI.CellStyles = CellStyles
 
@@ -60,10 +61,10 @@ local function ApplyCellVisualStyle(cell, bg, alpha)
     cellData.resolvedAlpha = alpha
 
     if cell.bg then
-        cell.bg:SetColorTexture(UI.Color(bg))
+        CellBackgrounds.Apply(cell, bg)
     end
     if cell.text then
-        cell.text:SetTextColor(UI.TextColorFor(bg))
+        cell.text:SetTextColor(UI.TextColorFor(type(bg) == "table" and bg.bottomRight or bg))
     end
     if cell.SetAlpha then
         cell:SetAlpha(alpha)

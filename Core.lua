@@ -98,6 +98,7 @@ eventFrame:SetScript("OnEvent", function(self, event, loadedAddon)
 
     NS.db = LootLevelDB
     NS.version = GetVersion()
+    NS.BonusScanner:Initialize()
 
     if NS.RegisterSlashCommands then
         NS:RegisterSlashCommands()

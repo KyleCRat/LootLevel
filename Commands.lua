@@ -2,6 +2,14 @@ local ADDON_NAME, NS = ...
 
 local COMMANDS = {
     {
+        triggers = { "collector", "probe" },
+        name = "Collector",
+        description = "Open the bonus ID batch collector",
+        func = function()
+            NS:ShowCollector()
+        end,
+    },
+    {
         triggers = { "", "toggle", "t" },
         name = "Toggle",
         description = "Toggle the item level table",
