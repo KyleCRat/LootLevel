@@ -267,6 +267,20 @@ Observed checks:
   applies to that family; it does not establish that every other bonus ID has
   item-independent effects.
 
+### Season 2 Track Scope
+
+The user's further research suggests Midnight Season 2 may not have an Explorer
+upgrade track. This is consistent with our observations: the five ordinary
+families above are confirmed, while the tested sub-Adventurer rewards are
+untracked. Explorer-labeled bonuses elsewhere in the scan do not establish an
+active Season 2 track.
+
+Use Adventurer through Myth as the working Season 2 track scope. Their ordinary
+rank curves are captured; do not treat an Explorer curve as a required missing
+data set or a blocker. This is a working scope, not proof of exhaustive absence.
+Revisit it if a current-season source returns Explorer metadata. Continue to
+collect untracked reward ilvls without inventing track names or ranks.
+
 ### Myth 7-9/6 Reference
 
 | Myth Rank | Midnight Season 1 ilvl | Midnight Season 2 ilvl | Season 2 Bonus ID |
@@ -404,7 +418,9 @@ The earlier Normal reward report of 214 concerned Nibbles' Training Rod (251123)
 not this item, and likewise lacked recorded runtime build metadata. Preserve
 both observations rather than treating them as interchangeable source data or
 assuming either is incorrect. A same-build, cross-dungeon comparison remains
-useful; a confirmed current-season Explorer starting point is still missing.
+useful for establishing source rewards, independent of whether an Explorer
+track exists. Explorer is not a required Season 2 baseline under the working
+track scope above.
 
 ### Season 1 Myth 9/6 After the Season Transition
 
@@ -507,12 +523,278 @@ does not universally mean the reward cap; it can also be unavailable data.
 For world activities, every tested input from 0 through 12 returned false from
 the next-increase query. However, loading the example item for observed activity
 ID 207 resolved **Preyhunter's Signet at 305**, confirming the displayed world
-Tier 8 reward. Other world tier rewards remain unverified.
+Tier 8 reward. Later tests below also confirmed a difficulty-1 world preview
+at 279; intermediate Delve rewards have not been verified by actual previews.
 
 The character's raid Vault previews showed two Mythic slots at 344 and a Heroic
 slot at 318. These are observations of that character's preview, not a complete
 raid Vault mapping. Do not hardcode activity ID 207 or tier ID 256 as universal
 collector constants; acquire them from the activity records.
+
+### Zero-Progress Vault Investigation
+
+The follow-up runtime captures explicitly reported **12.1.0 build 69933**, build
+date September 18, 2026, interface 120100, on a level-90 character. These are
+separate from the original dumps whose build was not recorded. The local code
+export is older (69497); the inspected local enum index reports build 69587.
+The raid/dungeon context names below were subsequently printed from the user's
+actual runtime enum rather than assumed from those older references.
+
+On the character with no Vault progress:
+
+- `HasAvailableRewards()`, `HasGeneratedRewards()`, and
+  `AreRewardsForCurrentRewardPeriod()` were all false.
+- All nine dungeon/raid/world slots had zero progress, level, and activity tier
+  ID. Slot IDs and unlock thresholds were still available.
+- `GetExampleRewardItemHyperlinks` returned blank links, not usable previews.
+- `GetSortedProgressForActivity(type, false)` returned no rows for dungeon,
+  raid, and world activity types (1, 3, and 6).
+- Reward-threshold queries still returned data when supplied usable tier IDs.
+  Character progress is therefore not a prerequisite for those successful
+  queries. This does not establish a complete reward-table enumeration API.
+
+A bounded probe of tier IDs 1-512 at input level 0 found these transitions:
+
+| Queried Tier | Difficulty ID | Next Tier | Next Level | Reward ilvl |
+| ---: | ---: | ---: | ---: | ---: |
+| 248 | 0 | 248 | 2 | 282 |
+| 249 | 0 | 249 | 2 | 282 |
+| 254 | 2 (Heroic dungeon) | 255 | 0 | 302 |
+| 255 | 23 (Mythic dungeon) | 256 | 2 | 305 |
+| 256 | 8 (M+) | 256 | 4 | 308 |
+| 257 | 0 | 257 | 2 | 282 |
+
+The returned ilvl belongs to the **next** tier/level. In particular, querying
+254 reports Mythic 0 at 302, not Heroic at 302. Inputs -1, 1, and 2 for tiers
+254/255 gave no result; input -1 for tier 256 also failed. Negative inputs did
+not expose a starting reward. Tier 256 still produced the previously recorded
+308/311/315/318 thresholds without progress; input 1 remained false.
+
+`GetNextMythicPlusIncrease` also worked without progress, but its results differ
+from the tier-based query. Inputs 0/1 reported next key 2 at 305, then inputs
+2-9 reported successive keys 3-10 at 305/308/308/311/315/**305**/315/318.
+Thus the anomalous +8 = 305 recurred on the empty character. Input 10 returned
+`true, nil, nil`; inputs 11/12 returned false. A true flag alone is not a reward
+value, and these conflicting paths must not be silently merged or corrected.
+
+#### World Tiers and Populated-Character Controls
+
+Further calls at input levels 0-12 exposed these next-level results:
+
+| Reported Next Level | Tier 248 | Tier 249 | Tier 257 |
+| ---: | ---: | ---: | ---: |
+| 2 | 282 | 282 | 282 |
+| 3 | no result | 285 | 285 |
+| 4 | no result | 289 | 289 |
+| 5 | no result | 292 | 292 |
+| 6 | no result | 295 | 295 |
+| 7 | no result | 298 | no result |
+| 8 | no result | 305 | no result |
+
+For each listed curve, inputs 0 and 1 returned level 2; subsequent successful
+inputs returned the next integer level. Other tested inputs returned false.
+These are API-reported candidate curves, not confirmed Delve reward mappings.
+In particular, do not replace the inherited Delve 6/7 values with 295/298 just
+because tier 249 reports those numbers.
+
+On Main with existing progress, the uncombined world breakdown returned
+`252, 8, 3` and `249, 1, 1` (tier ID, difficulty, points). Its actual slots were:
+
+| Slot | Tier ID | Difficulty | Progress | Threshold | Preview ilvl |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 252 | 8 | 3 | 2 | 305 |
+| 2 | 249 | 1 | 4 | 4 | 279 |
+| 3 | 0 | 0 | 4 | 8 | no link |
+
+Tier 252 is therefore present in actual world progress, despite returning false
+from `GetNextActivitiesIncrease(252, level)` for every tested input 0-12, even
+on Main. False does not prove an invalid tier, missing character progress, or a
+reward cap. Tier 249 participates in a real difficulty-1 world reward; its
+other levels are not thereby assigned to the difficulty-8 activity using 252.
+Do not label 248 or 257 as specific activity sources from their curves alone.
+
+The same Main character had two Mythic raid slots and one Heroic raid slot:
+all three had tier ID 0, difficulties 16/16/15, progress 7, and thresholds
+2/4/6. The next-tier query failed for all three. A bounded probe of IDs 1-512
+with raid difficulty inputs 14-17 also found no results. In the inspected Lua,
+raid previews use example links; the generic next-tier query is used by the
+dungeon/world branches. There is no demonstrated generic raid-tier lookup.
+
+#### Context-Based Item Previews Without Progress
+
+`C_Item.GetDelvePreviewItemLink(itemID, context)` successfully constructed links
+outside an earned Vault slot, including non-Delve contexts. Load the base item
+asynchronously first (`Item:CreateFromItemID(...):ContinueOnItemLoad(...)`), then
+retain the returned link and read its first `GetDetailedItemLevelInfo` result.
+Despite its name, the tested helper is not limited to the two world examples.
+Do not assume it supports every context or item without validation.
+
+The actual Vault controls supplied these links on Main:
+
+```text
+World difficulty 8:
+item:275527::::::::90:262::55:2:12841:13668::::::
+World difficulty 1, current and higher preview:
+item:275528::::::::90:262::108:2:13668:12825::::::
+item:275528::::::::90:262::108:2:13668:12826::::::
+Mythic raid:
+item:270175::::::::90:262::96:3:6652:13335:13848::::::
+Heroic raid:
+item:270175::::::::90:262::95:3:6652:13334:12849::::::
+Dungeon +12:
+item:273775::::::::90:262::35:4:12849:13440:13662:12699::::::
+```
+
+These contain the known rank bonuses 12841, 12825/12826, 13848, and 12849.
+The current/higher world previews share the same item ID and context but have
+different rank bonuses; this helper has no explicit difficulty/rank argument.
+
+On Main the helper reproduced 305 for item 275527/context 55 and 279 for item
+275528/context 108. On the zero-progress character, both items independently
+returned 100 with context 0, 305 with context 55, and 279 with context 108.
+The swapped-context results demonstrate context-dependent resolution across
+these two seeds, not just each item returning its default level. Swapped
+variants are still probes, not evidence that those variants are obtainable.
+
+The helper generated links with only bonus **3524**, without us injecting a
+known rank bonus. For example:
+
+```text
+item:275528::::::::90:262::108:1:3524::::::
+item:270175::::::::90:262::95:1:3524::::::
+```
+
+Further zero-progress results, with enum names printed from the client:
+
+| Item ID | Context | Runtime Context Name | ilvl | Independent Reward Control |
+| ---: | ---: | --- | ---: | --- |
+| 270175 | 94 | RaidFinderExtended_3 | 292 | No actual LFR Vault preview captured |
+| 270175 | 93 | RaidNormalExtended_3 | 305 | No actual Normal Vault preview captured |
+| 270175 | 95 | RaidHeroicExtended_3 | 318 | Matches Main's Heroic raid Vault preview |
+| 270175 | 96 | RaidMythicExtended_3 | 344 | Matches Main's Mythic raid Vault previews |
+| 273775 | 102 | DungeonHeroicJackpot | 289 | No actual Heroic dungeon Vault preview captured |
+| 273775 | 103 | DungeonMythicJackpot | 302 | Agrees with next-tier query 254 -> 255/0 |
+| 273775 | 35 | ChallengeModeJackpot | 305 | Agrees with 255 -> 256/2; does NOT reproduce the +12 preview at 318 |
+
+Direct `GetItemUpgradeInfo` queries of the generated links subsequently
+confirmed context 94 as **292 Champion 1/6** and context 93 as **305 Hero 1/6**.
+These match the user's expected LFR and Normal Vault rewards and the ordinary
+track curves. They remain context probes, not new actual-slot preview captures.
+
+Thus some source-context reward levels can be read without character Vault
+progress or claimable rewards. This is not yet a complete progress-free Vault
+collector: intermediate world/Delve mappings, key-specific M+ rewards, and
+independent checks for the newly probed baselines remain. Context 35 alone does
+not specify the key level, and 3524 is not a universal fixed-rank bonus.
+
+Keep observed Vault links, threshold-query results, context probes, and inferred
+source mappings as distinct evidence. These results apply to the tested build,
+level, and seeds; they do not establish every item's behavior or future-season
+values. Preserve exact returned links and item-loading failures. Do not assign
+the same ilvl or track to every item/context, infer obtainability from a decoded
+link, or update the season files automatically. None of these new queries has
+been added to the addon runner yet.
+
+#### Named World Context Scan
+
+On the same zero-progress character and build, item **275528** was queried for
+each runtime `Enum.ItemCreationContext` name matching `Delve`, `WorldQuest`, or
+`Prey`. The 48 reported results included no name matching `Prey`; this does not
+prove that Prey rewards lack a context under another name. The scan queried ilvl,
+not upgrade-track metadata, and did not establish source-to-difficulty mappings.
+
+| Runtime Context Name | Context ID | ilvl |
+| --- | ---: | ---: |
+| WorldQuest_1 | 25 | 266 |
+| WorldQuest_2 | 26 | 269 |
+| WorldQuest_3 | 27 | 272 |
+| WorldQuest_4 | 28 | 276 |
+| WorldQuest_5 | 29 | 279 |
+| WorldQuest_6 | 30 | 282 |
+| WorldQuest_7 | 36 | 285 |
+| WorldQuest_8 | 37 | 289 |
+| WorldQuest_9 | 42 | 292 |
+| WorldQuest_10 | 43 | 295 |
+| WorldQuest_11 | 53 | 298 |
+| WorldQuest_12 | 54 | 302 |
+| WorldQuest_13 | 55 | 305 |
+| WorldQuestJackpot | 74 | 262 |
+| DelvesJackpot | 108 | 279 |
+
+The remaining results, with IDs and ilvls in the stated name order:
+
+| Context Names | Context IDs | ilvls |
+| --- | --- | --- |
+| Delves_1, Delves_2, Delves_3 | 104, 106, 107 | 100, 100, 100 |
+| DelvesKey_1 | 109 | 266 |
+| DelvesKey_2 through DelvesKey_8 | 110-116 | All 100 |
+| DelvesBounty_1 through DelvesBounty_4 | 117-120 | 266, 269, 272, 276 |
+| DelvesBounty_5 through DelvesBounty_8 | 121-124 | All 100 |
+| DelvesLevelUp_1 through DelvesLevelUp_4 | 125-128 | 256, 266, 262, 100 |
+| DelvesBonus_1 through DelvesBonus_4 | 129-132 | All 100 |
+| DelvesBonus_5 through DelvesBonus_10 | 133-138 | 253, 260, 266, 272, 292, 305 |
+
+Ilvl **100** matches this seed's context-0 result. Keep these as default-like
+probe results, not established reward levels or proof that a context is invalid.
+An item from the corresponding reward source may behave differently. Do not
+discard these rows from a future collector.
+
+The WorldQuest sequence supplies useful context-resolved item levels, but its
+ordinal is not a Vault difficulty: the observed difficulty-8 preview uses
+`WorldQuest_13`/55, while difficulty 1 uses `DelvesJackpot`/108. Likewise,
+`DelvesLevelUp_2` returned a higher ilvl than `DelvesLevelUp_3`; numeric suffixes
+alone do not establish a progression curve. Do not import these contexts as
+Delve tiers, map rewards, Prey difficulties, or Vault tiers without source data.
+
+A follow-up `GetItemUpgradeInfo` query of the generated links for item 275528
+returned:
+
+| Context ID | Runtime Context Name | ilvl | Track | Rank / Max Rank |
+| ---: | --- | ---: | --- | --- |
+| 74 | WorldQuestJackpot | 262 | nil | 0 / 0 |
+| 125 | DelvesLevelUp_1 | 256 | nil | 0 / 0 |
+| 126 | DelvesLevelUp_2 | 266 | Adventurer | 1 / 6 |
+| 127 | DelvesLevelUp_3 | 262 | nil | 0 / 0 |
+| 133 | DelvesBonus_5 | 253 | nil | 0 / 0 |
+| 134 | DelvesBonus_6 | 260 | nil | 0 / 0 |
+| 108 | DelvesJackpot | 279 | Veteran | 1 / 6 |
+| 55 | WorldQuest_13 | 305 | Hero | 1 / 6 |
+
+The sub-Adventurer results 253, 256, 260, and 262 are untracked for this seed
+and these contexts; they do not establish Explorer's starting level or cap.
+Preserve the reported 260 rather than adjusting it to the known Normal-dungeon
+259 observation. Context 126 provides an Adventurer 1/6 preview at 266 without
+supplying a rank bonus or owning an Adventurer item, but does not establish a
+particular activity's reward mapping.
+
+The first attempt at this follow-up returned nil for ilvl and all upgrade
+fields for every world context, including the previously successful controls
+108 and 55. The user reported that the Vault was not open for that attempt;
+the rerun produced the table above. Do not record the initial nils as absent
+reward definitions.
+
+The user then reloaded with the Vault kept closed and reproduced nil results
+for all eight contexts. Explicitly loading item 275528 with
+`Item:CreateFromItemID(275528):ContinueOnItemLoad(...)`, then querying context
+108 inside the callback, returned:
+
+```text
+loaded 275528 link [Preyhunter's Ring] ilvl 279
+```
+
+Explicit item loading therefore suffices for this control after reload without
+reopening the Vault. Together with the zero-progress observations, this gives
+a demonstrated path that does not require an earned reward or an open Vault
+for this item/context pair. This is not a new fresh-client-login test or proof
+that every context behaves identically. The remaining seven contexts still
+need a post-load rerun with the Vault closed.
+
+The future collector must wait for item data before requesting context links,
+and retain unresolved loads separately from successful untracked results
+(`nil` track with rank/max rank `0/0`). In the local 12.1.0.69497 export,
+Blizzard's Delves tooltip likewise waits for `ContinueWithCancelOnItemLoad`
+before calling `GetDelvePreviewItemLink`; the runtime test above is from build
+69933. Keep Vault visibility, initialization, and earned progress separate.
 
 ## Follow-Up Work
 
@@ -521,17 +803,23 @@ build 69933. Further checks on other builds or item types extend that evidence
 rather than being required to finish this particular isolation test.
 
 1. Check another Normal Midnight dungeon item against the observed 259 reward
-   and retain its build/source metadata. Seek a confirmed current-season
-   Explorer baseline without assuming an untracked Normal item is Explorer 1/6.
+   and retain its build/source metadata. Preserve untracked rewards as such;
+   do not require an Explorer baseline unless current-season source evidence
+   establishes that track.
 2. Continue sequential scanning at 15000-19999 with the original fixed seed.
    Preserve 0/0, over-cap, missing-data, and error regions. Repeat promising
    candidates on independent seeds and builds rather than assigning seasons
    from adjacency or assuming every useful encoding is a single bonus.
 3. Add a journal observation collector with filter/difficulty/encounter/source
    metadata and asynchronous loading. Keep original rewards separate from probes.
-4. Add explicit vendor capture and current-character Vault capture. Separate
-   upgrade costs/discounts, item ranks, dungeon end-of-run rewards, and Vault
-   rewards. They are different data sets.
+4. Before automating Vault/context capture, finish activity-source mapping and
+   context calibration. Cross-check the LFR/Normal raid and Heroic dungeon
+   context results against real previews when available, repeat on additional
+   current-season seeds, and test future builds rather than hardcoding these
+   IDs as universal. Keep the M+ +8 discrepancy and intermediate world tiers
+   unresolved until independently checked. Add explicit vendor capture too;
+   upgrade costs/discounts, item ranks, end-of-run rewards, and Vault rewards
+   are different data sets.
 5. Compare observed anchors with candidate families before assigning a season.
    Preserve conflicting PTR/hotfix/build results rather than overwriting them.
    Snapshot active seasonal track metadata and distinguish historical labels
@@ -567,6 +855,9 @@ item 271486, and the complete 15,000-ID Sporeheart capture. Those captures verif
 sequential collection, single-batch export beyond 5,000 rows, and the targeted
 cross-item/context isolation results on build 69933, not every UI or lifecycle
 path.
+The separate manual zero-progress investigation also validated the specific
+threshold and context queries documented above; it did not validate an automated
+Vault/context collector or prove a complete future-season discovery workflow.
 Pause/resume, reload recovery, combat, failed loads, history limits, and layout
 at different scales still need the manual checks above. No game client is
 available to the coding agent for direct runtime validation.
