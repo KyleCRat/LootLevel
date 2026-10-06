@@ -1,0 +1,14 @@
+package-as: LootLevel
+
+manual-changelog:
+    filename: CHANGELOG.md
+    markup-type: markdown
+
+ignore:
+    - AGENTS.md
+    - FIXME.md
+    - TODO.md
+    - COLLECTOR_PLAN.md
+    - "*.log"
+    - "*.png"
+    - Data/Progression/README.md
